@@ -28,5 +28,5 @@ node [Exp -Nat +Nat] {
 }
 
 init {
-  [Succ [Succ Zero]] [Exp [Succ [Succ [Succ Zero]]] x]
+  [Succ [Succ [Succ Zero]]] [Exp [Succ [Succ Zero]] [Exp [Succ [Succ Zero]] x]]
 }

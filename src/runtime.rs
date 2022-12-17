@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use crate::program::*;
 
 pub type Ptr = (Tag, u32);
@@ -134,6 +136,24 @@ impl<'a> Runtime<'a> {
       let mut f = f.debug_map();
       for (i, &ptr) in vec.iter().enumerate() {
         f.entry(&i, &self.dbg_ptr(ptr));
+      }
+      f.finish()
+    })
+  }
+  pub fn dbg_tree<'b>(&'b self, ptr: Ptr) -> impl std::fmt::Debug + 'b {
+    DebugFn(move |f| {
+      write!(f, "{:?}", self.dbg_ptr(ptr))?;
+      if !ptr.0.ok() {
+        return Ok(());
+      }
+      let node = &self.program.nodes[ptr.0 .0 as usize];
+      if node.arity == 1 {
+        return Ok(());
+      }
+      f.write_char(' ')?;
+      let mut f = f.debug_list();
+      for i in 1..node.arity as u32 {
+        f.entry(&self.dbg_tree(self.get(ptr.1 + i)));
       }
       f.finish()
     })

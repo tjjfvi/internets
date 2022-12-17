@@ -1,0 +1,27 @@
+node Erase
+node [CloneBits +Bits +Bits]
+
+type Bits {
+  node Nil {
+    rule Erase Nil
+    rule [CloneBits Nil Nil] Nil
+  }
+  node [Zero -Bits] {
+    rule Erase [Zero Erase]
+    rule [CloneBits [Zero x] [Zero y]] [Zero [CloneBits x y]]
+  }
+  node [One -Bits] {
+    rule Erase [One Erase]
+    rule [CloneBits [One x] [One y]] [One [CloneBits x y]]
+  }
+}
+
+node [Inc +Bits] {
+  rule Nil [Inc [One Nil]]
+  rule [Zero x] [Inc [One x]]
+  rule [One [Inc x]] [Inc [Zero x]]
+}
+
+init {
+  Nil [Inc [Inc [Inc [Inc [Inc x]]]]]
+}

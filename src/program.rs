@@ -94,6 +94,7 @@ pub fn build_program(ast: &parser::Program) -> Program {
         if right_name != &node_ast.0 {
           panic!("expected right side of rule to be the parent")
         }
+        dbg!(&left_name);
         let other = node_ids[left_name];
         let mut vars = HashMap::new();
         let mut var_count = 0;

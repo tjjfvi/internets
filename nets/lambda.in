@@ -1,0 +1,26 @@
+type Term
+
+node Era
+node [Dup +Term +Term]
+
+node [Lam +Term -Term] {
+  rule Era [Lam Era Era]
+  rule [Dup [Lam x1 y1] [Lam x2 y2]] [Lam [Sup x1 x2] [Dup y1 y2]]
+}
+node [App -Term +Term] {
+  rule [Lam x y] [App x y]
+  rule [Sup [App x1 y1] [App x2 y2]] [App [Dup x1 x2] [Sup y1 y2]]
+  rule [Dup [App x1 y1] [App x2 y2]] [App [Dup x1 x2] [Dup y1 y2]]
+}
+node [Sup -Term -Term] {
+  rule [Dup x y] [Sup x y]
+}
+
+node [Pair -Term -Term]
+
+init {
+  a [Lam [Dup f1 f2] [Lam [App f1 [App f2 o1]] o1]]
+  b [Lam [Dup f3 f4] [Lam [App f3 [App f4 o2]] o2]]
+  add [Lam [App i1 [App z n1]] [Lam [App i2 [App n1 n2]] [Lam [Dup i1 i2] [Lam z n2]]]]
+  add [App a [App b out]]
+}
