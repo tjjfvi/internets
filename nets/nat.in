@@ -1,0 +1,32 @@
+node Erase
+node [CloneNat +Nat +Nat]
+
+type Nat {
+  node Zero {
+    rule Erase Zero
+    rule [CloneNat Zero Zero] Zero
+  }
+  node [Succ -Nat] {
+    rule Erase [Succ Erase]
+    rule [CloneNat [Succ x] [Succ y]] [Succ [CloneNat x y]]
+  } 
+}
+
+node [Add -Nat +Nat] {
+  rule Zero [Add x x]
+  rule [Succ [Add x y]] [Add x [Succ y]]
+}
+ 
+node [Mult -Nat +Nat] {
+  rule Zero [Mult Erase Zero]
+  rule [Succ [Mult x [Add y z]]] [Mult [CloneNat x y] z]
+}
+
+node [Exp -Nat +Nat] {
+  rule Zero [Exp Erase [Succ Zero]]
+  rule [Succ [Exp x [Mult y z]]] [Exp [CloneNat x y] z]
+}
+
+init {
+  [Succ [Succ Zero]] [Exp [Succ [Succ [Succ Zero]]] x]
+}
