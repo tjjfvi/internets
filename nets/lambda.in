@@ -19,8 +19,8 @@ node [Sup -Term -Term] {
 node [Pair -Term -Term]
 
 init {
-  a [Lam [Dup f1 f2] [Lam [App f1 [App f2 o1]] o1]]
-  b [Lam [Dup f3 f4] [Lam [App f3 [App f4 o2]] o2]]
-  add [Lam [App i1 [App z n1]] [Lam [App i2 [App n1 n2]] [Lam [Dup i1 i2] [Lam z n2]]]]
-  add [App a [App b out]]
+  [Lam [Dup f1 f2] [Lam [App f1 [App f2 o1]] o1]] a
+  [Lam [Dup f3 f4] [Lam [App f3 [App f4 o2]] o2]] b
+  [Lam [App i1 [App z n1]] [Lam [App i2 [App n1 n2]] [Lam [Dup i1 i2] [Lam z n2]]]] add
+  [App a [App b out]] add
 }

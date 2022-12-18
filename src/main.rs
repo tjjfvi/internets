@@ -4,11 +4,7 @@ mod runtime;
 
 use std::{env, fs};
 
-use crate::{
-  parser::parse,
-  program::build_program,
-  runtime::{Port, Runtime},
-};
+use crate::{parser::parse, program::build_program, runtime::Runtime};
 
 fn main() {
   let args: Vec<_> = env::args().collect();
@@ -20,5 +16,5 @@ fn main() {
     runtime.reduce();
   }
   dbg!(&runtime);
-  dbg!(runtime.dbg_tree(runtime.get(Port::new_aux(0), 0)));
+  dbg!(runtime.dbg_tree(runtime.get(runtime.free_port(0))));
 }
