@@ -86,7 +86,7 @@ impl<'a> Runtime<'a> {
       program,
       mem: (0..program.kinds.len())
         .map(|x| Port::new_principal(x))
-        .chain(iter::repeat(Port::new_null(0)).take(program.init.pins.len()))
+        .chain(iter::repeat(Port::new_null(0)).take(program.init.free.len()))
         .collect(),
       vars: vec![Port::new_null(0); program.max_vars()],
       free: vec![usize::MAX; program.max_arity()],
@@ -97,7 +97,7 @@ impl<'a> Runtime<'a> {
       let port = runtime.create_node(node);
       runtime.graft_net(port, net);
     }
-    for (i, &var) in program.init.pins.iter().enumerate() {
+    for (i, &var) in program.init.free.iter().enumerate() {
       runtime.link(runtime.free_port(i), runtime.vars[var]);
     }
     runtime

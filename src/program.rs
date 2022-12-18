@@ -60,7 +60,7 @@ pub struct Node {
 pub struct Init {
   pub vars: usize,
   pub nets: Vec<(Node, Net)>,
-  pub pins: Vec<usize>,
+  pub free: Vec<usize>,
 }
 
 pub fn build_program(ast: &parser::Program) -> Program {
@@ -148,7 +148,7 @@ pub fn build_program(ast: &parser::Program) -> Program {
     init: Init {
       vars: init_var_count,
       nets: init_nets,
-      pins: init_vars
+      free: init_vars
         .values()
         .filter(|x| !x.def)
         .map(|x| x.id)
