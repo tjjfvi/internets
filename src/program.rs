@@ -10,44 +10,57 @@ use crate::parser;
 #[derive(Debug)]
 pub struct Program {
   pub types: Vec<Type>,
-  pub nodes: Vec<Node>,
+  pub kinds: Vec<Kind>,
   pub init: Init,
 }
 
 #[derive(Debug)]
 pub struct Type {
-  pub id: u32,
+  pub id: usize,
   pub name: String,
-  pub nodes: Range<u32>,
+  pub nodes: Range<usize>,
 }
 
 #[derive(Debug)]
-pub struct Node {
-  pub id: u32,
-  pub arity: u32,
+pub struct Kind {
+  pub id: usize,
+  pub arity: usize,
   pub name: String,
-  pub args: Vec<(bool, u32)>,
-  pub rules: HashMap<u32, Rule>,
+  pub args: Vec<(bool, usize)>,
+  pub rules: HashMap<usize, Rule>,
 }
 
 #[derive(Debug)]
 pub struct Rule {
-  pub vars: u32,
+  pub vars: usize,
   pub left: Vec<Net>,
   pub right: Vec<Net>,
 }
 
 #[derive(Debug)]
 pub enum Net {
-  Node(u32, u32, Vec<Net>),
-  Var(u32),
+  Node(Node),
+  Var(Var),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Var {
+  pub id: usize,
+  pub def: bool,
+}
+
+#[derive(Debug)]
+pub struct Node {
+  pub kind: usize,
+  pub arity: usize,
+  pub ports: Vec<Net>,
 }
 
 #[derive(Debug)]
 pub struct Init {
-  pub vars: u32,
-  pub nets: Vec<(u32, Net)>,
-  pub pins: Vec<u32>,
+  pub vars: usize,
+  pub nets: Vec<(Node, Net)>,
+  pub pins: Vec<usize>,
 }
 
 pub fn build_program(ast: &parser::Program) -> Program {
@@ -56,9 +69,9 @@ pub fn build_program(ast: &parser::Program) -> Program {
   let mut type_ids = HashMap::new();
   let mut node_ids = HashMap::new();
   for type_ast in &ast.0 {
-    let id = types.len() as u32;
-    let nodes_start = nodes.len() as u32;
-    let nodes_end = nodes_start + type_ast.1.len() as u32;
+    let id = types.len();
+    let nodes_start = nodes.len();
+    let nodes_end = nodes_start + type_ast.1.len();
     types.push(Type {
       id,
       name: type_ast.0.to_owned(),
@@ -66,10 +79,10 @@ pub fn build_program(ast: &parser::Program) -> Program {
     });
     type_ids.insert(type_ast.0, id);
     for node_ast in &type_ast.1 {
-      let id = nodes.len() as u32;
-      nodes.push(Node {
+      let id = nodes.len();
+      nodes.push(Kind {
         id,
-        arity: node_ast.1.len() as u32,
+        arity: node_ast.1.len(),
         name: node_ast.0.to_owned(),
         args: Vec::with_capacity(node_ast.1.len()),
         rules: HashMap::new(),
@@ -101,9 +114,9 @@ pub fn build_program(ast: &parser::Program) -> Program {
         let mut cb = |ast| build_rule_node(ast, &nodes, &node_ids, &mut vars, &mut var_count);
         let left = left_children.iter().map(&mut cb).collect_vec();
         let right = right_children.iter().map(&mut cb).collect_vec();
-        for (var, twice) in vars.values() {
-          if !twice {
-            panic!("var {} only used once", var)
+        for (name, var) in vars {
+          if !var.def {
+            panic!("var {} only used once", name)
           }
         }
         let node = &mut nodes[id as usize];
@@ -122,68 +135,82 @@ pub fn build_program(ast: &parser::Program) -> Program {
   let mut init_vars = HashMap::new();
   let mut init_var_count = 0;
   for (left, right) in &ast.1 .0 {
-    let parser::RuleNet::Node(..) = right else {
-      panic!("expected right side of init to be node")
-    };
     let mut cb = |ast| build_rule_node(ast, &nodes, &node_ids, &mut init_vars, &mut init_var_count);
-    let left = cb(left);
+    let Net::Node(left) = cb(left) else {
+      panic!("expected left side to be a node")
+    };
     let right = cb(right);
-    match &left {
-      &Net::Node(..) => {
-        let var = init_var_count;
-        init_var_count += 1;
-        init_nets.push((var, left));
-        init_nets.push((var, right))
-      }
-      &Net::Var(var) => init_nets.push((var, right)),
-    }
+    init_nets.push((left, right));
   }
   Program {
     types,
-    nodes,
+    kinds: nodes,
     init: Init {
       vars: init_var_count,
       nets: init_nets,
-      pins: init_vars.values().filter(|x| !x.1).map(|x| x.0).collect(),
+      pins: init_vars
+        .values()
+        .filter(|x| !x.def)
+        .map(|x| x.id)
+        .collect(),
     },
   }
 }
 
 fn build_rule_node<'a>(
   ast: &parser::RuleNet<'a>,
-  nodes: &Vec<Node>,
-  node_ids: &HashMap<&'a str, u32>,
-  vars: &mut HashMap<&'a str, (u32, bool)>,
-  var_count: &mut u32,
+  nodes: &Vec<Kind>,
+  node_ids: &HashMap<&'a str, usize>,
+  vars: &mut HashMap<&'a str, Var>,
+  var_count: &mut usize,
 ) -> Net {
   match ast {
-    parser::RuleNet::Var(var) => match vars.entry(var) {
+    parser::RuleNet::Var(name) => match vars.entry(name) {
       Entry::Occupied(mut e) => {
-        let e = e.get_mut();
-        if e.1 {
-          panic!("var {} used more than twice", var)
+        let var = e.get_mut();
+        if var.def {
+          panic!("var {} used more than twice", name)
         }
-        e.1 = true;
-        Net::Var(e.0)
+        var.def = true;
+        Net::Var(*var)
       }
       Entry::Vacant(e) => {
-        let id = *var_count;
+        let var = Var {
+          id: *var_count,
+          def: false,
+        };
         *var_count += 1;
-        e.insert((id, false));
-        Net::Var(id)
+        e.insert(var);
+        Net::Var(var)
       }
     },
-    parser::RuleNet::Node(name, children) => {
-      let id = node_ids[name];
-      let arity = nodes[id as usize].arity;
-      Net::Node(
-        id,
+    parser::RuleNet::Node(name, ports) => {
+      let kind = node_ids[name];
+      let arity = nodes[kind as usize].arity;
+      Net::Node(Node {
+        kind,
         arity,
-        children
+        ports: ports
           .iter()
           .map(|ast| build_rule_node(ast, nodes, node_ids, vars, var_count))
           .collect(),
-      )
+      })
     }
+  }
+}
+
+impl Program {
+  pub fn max_arity(&self) -> usize {
+    self.kinds.iter().map(|x| x.arity).max().unwrap_or(0)
+  }
+  pub fn max_vars(&self) -> usize {
+    self
+      .kinds
+      .iter()
+      .flat_map(|x| x.rules.values())
+      .map(|x| x.vars)
+      .max()
+      .unwrap_or(0)
+      .max(self.init.vars)
   }
 }
