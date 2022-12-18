@@ -23,11 +23,11 @@ pub struct Type {
 
 #[derive(Debug)]
 pub struct Node {
-  pub id: i32,
-  pub arity: u8,
+  pub id: u32,
+  pub arity: u32,
   pub name: String,
   pub args: Vec<(bool, u32)>,
-  pub rules: HashMap<i32, Rule>,
+  pub rules: HashMap<u32, Rule>,
 }
 
 #[derive(Debug)]
@@ -39,7 +39,7 @@ pub struct Rule {
 
 #[derive(Debug)]
 pub enum Net {
-  Node(i32, u8, Vec<Net>),
+  Node(u32, u32, Vec<Net>),
   Var(u32),
 }
 
@@ -66,10 +66,10 @@ pub fn build_program(ast: &parser::Program) -> Program {
     });
     type_ids.insert(type_ast.0, id);
     for node_ast in &type_ast.1 {
-      let id = nodes.len() as i32;
+      let id = nodes.len() as u32;
       nodes.push(Node {
         id,
-        arity: (1 + node_ast.1.len()) as u8,
+        arity: node_ast.1.len() as u32,
         name: node_ast.0.to_owned(),
         args: Vec::with_capacity(node_ast.1.len()),
         rules: HashMap::new(),
@@ -152,7 +152,7 @@ pub fn build_program(ast: &parser::Program) -> Program {
 fn build_rule_node<'a>(
   ast: &parser::RuleNet<'a>,
   nodes: &Vec<Node>,
-  node_ids: &HashMap<&'a str, i32>,
+  node_ids: &HashMap<&'a str, u32>,
   vars: &mut HashMap<&'a str, (u32, bool)>,
   var_count: &mut u32,
 ) -> Net {

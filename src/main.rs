@@ -4,9 +4,11 @@ mod runtime;
 
 use std::{env, fs};
 
-use parser::parse;
-use program::build_program;
-use runtime::Runtime;
+use crate::{
+  parser::parse,
+  program::build_program,
+  runtime::{Port, Runtime},
+};
 
 fn main() {
   let args: Vec<_> = env::args().collect();
@@ -18,5 +20,5 @@ fn main() {
     runtime.step();
   }
   dbg!(&runtime);
-  dbg!(runtime.dbg_tree(runtime.get(0)));
+  dbg!(runtime.dbg_tree(runtime.get(Port::new_aux(0))));
 }
