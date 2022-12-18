@@ -15,10 +15,10 @@ fn main() {
   let program = build_program(&parse(&fs::read_to_string(&args[1]).unwrap()));
   dbg!(&program);
   let mut runtime = Runtime::new(&program);
-  while runtime.has_work() {
+  while !runtime.normal() {
     // dbg!(&runtime);
-    runtime.step();
+    runtime.reduce();
   }
   dbg!(&runtime);
-  dbg!(runtime.dbg_tree(runtime.get(Port::new_aux(0))));
+  dbg!(runtime.dbg_tree(runtime.get(Port::new_aux(0), 0)));
 }

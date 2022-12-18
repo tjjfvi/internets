@@ -9,9 +9,6 @@ impl Port {
   pub fn is_principal(&self) -> bool {
     self.0 & 1 != 0
   }
-  pub fn is_nullary(&self) -> bool {
-    self.0 & 2 == 0
-  }
   pub fn is_null(&self) -> bool {
     self.0 & 3 == 0
   }
@@ -19,7 +16,7 @@ impl Port {
     self.0 & 3 == 2
   }
   pub fn kind(&self) -> u32 {
-    self.0 as u32 >> 2
+    self.0 as u32 >> 1
   }
   pub fn adr(&self) -> u32 {
     (self.0 >> 32) as u32
@@ -30,11 +27,11 @@ impl Port {
   pub fn new_aux(adr: u32) -> Port {
     Port(((adr as u64) << 32) | 0b10)
   }
-  pub fn new_principal(kind: u32, nullary: bool, adr: u32) -> Port {
-    Port(((adr as u64) << 32) | (kind << 2) as u64 | ((!nullary as u64) << 1) | 1)
+  pub fn new_principal(kind: u32, adr: u32) -> Port {
+    Port(((adr as u64) << 32) | (kind << 1) as u64 | 1)
   }
   pub fn arg(&self, i: u32) -> Port {
-    Port::new_aux(self.adr() + 1 + i)
+    Port::new_aux(self.adr() + i)
   }
 }
 
@@ -43,40 +40,50 @@ pub struct Runtime<'a> {
   mem: Vec<Port>,
   vars: Vec<Port>,
   free: Vec<u32>,
-  work: Vec<Port>,
-  gens: u64,
+  active: Vec<(Port, Port)>,
+  steps: u64,
 }
 
 impl<'a> Runtime<'a> {
-  pub fn get(&self, port: Port) -> Port {
-    self.mem[port.adr() as usize]
+  pub fn get(&self, port: Port, i: u32) -> Port {
+    self.mem[(port.adr() + i) as usize]
   }
   pub fn alloc(&mut self, kind: u32, arity: u32) -> Port {
+    if arity == 0 {
+      return Port::new_principal(kind, u32::MAX);
+    }
     let arity = arity as usize;
-    let free_adr = &mut self.free[arity];
+    let free_adr = &mut self.free[arity - 1];
     let adr = if free_adr == &u32::MAX {
       let start = self.mem.len();
       self
         .mem
-        .extend(std::iter::repeat(Port::new_null(0)).take(arity + 1));
+        .extend(std::iter::repeat(Port::new_null(0)).take(arity));
       start as u32
     } else {
       let start = *free_adr;
       *free_adr = self.mem[start as usize].adr();
       start
     };
-    Port::new_principal(kind, false, adr)
+    Port::new_principal(kind, adr)
   }
   pub fn link(&mut self, p: Port, q: Port) {
-    self.mem[p.adr() as usize] = q;
-    self.mem[q.adr() as usize] = p;
+    if !p.is_principal() {
+      self.mem[p.adr() as usize] = q;
+    }
+    if !q.is_principal() {
+      self.mem[q.adr() as usize] = p;
+    }
   }
   pub fn free(&mut self, port: Port, arity: u32) {
+    if arity == 0 {
+      return;
+    }
     let arity = arity as usize;
     let adr = port.adr();
-    let free_adr = &mut self.free[arity];
+    let free_adr = &mut self.free[arity - 1];
     self.mem[adr as usize] = Port::new_null(*free_adr);
-    for i in 0..arity {
+    for i in 0..arity - 1 {
       self.mem[adr as usize + 1 + i] = Port::new_null(u32::MAX);
     }
     *free_adr = adr;
@@ -96,50 +103,49 @@ impl<'a> Runtime<'a> {
       program,
       mem: vec![Port::new_null(0); program.init.nets.len().max(program.init.pins.len())],
       vars: vec![Port::new_null(0); max_vars as usize],
-      free: vec![u32::MAX; max_arity as usize + 1],
-      work: vec![],
-      gens: 0,
+      free: vec![u32::MAX; max_arity as usize],
+      active: vec![],
+      steps: 0,
     };
     for (i, &(var, ref net)) in program.init.nets.iter().enumerate() {
       let port = Port::new_aux(i as u32);
-      runtime.instantiate_net(port, net);
-      runtime.instantiate_net(runtime.get(port), &Net::Var(var));
+      runtime.graft(port, net);
+      runtime.graft(runtime.get(port, 0), &Net::Var(var));
     }
     for (i, &var) in program.init.pins.iter().enumerate() {
-      runtime.instantiate_net(Port::new_aux(i as u32), &Net::Var(var));
+      runtime.graft(Port::new_aux(i as u32), &Net::Var(var));
     }
     runtime
   }
-  pub fn instantiate_net(&mut self, port: Port, net: &Net) {
-    match net {
+  pub fn graft(&mut self, port: Port, net: &Net) {
+    let other = match net {
       &Net::Var(var) => {
         let var = &mut self.vars[var as usize];
         if var.is_null() {
           *var = port;
-        } else {
-          let var = std::mem::replace(var, Port::new_null(0));
-          self.link(port, var);
+          return;
         }
+        std::mem::replace(var, Port::new_null(0))
       }
       &Net::Node(kind, arity, ref children) => {
         let node = self.alloc(kind, arity);
-        self.link(port, node);
         for (i, child) in children.iter().enumerate() {
-          self.instantiate_net(node.arg(i as u32), child)
+          self.graft(node.arg(i as u32), child)
         }
+        node
       }
-    }
-    if port.is_principal() && self.get(port).is_principal() {
-      self.work.push(port)
+    };
+    self.link(port, other);
+    if port.is_principal() && other.is_principal() {
+      self.active.push((port, other))
     }
   }
-  pub fn has_work(&self) -> bool {
-    !self.work.is_empty()
+  pub fn normal(&self) -> bool {
+    self.active.is_empty()
   }
-  pub fn step(&mut self) {
-    self.gens += 1;
-    let port1 = self.work.pop().unwrap();
-    let port2 = self.get(port1);
+  pub fn reduce(&mut self) {
+    self.steps += 1;
+    let (port1, port2) = self.active.pop().unwrap();
     let rule = self.program.nodes[port1.kind() as usize]
       .rules
       .get(&port2.kind())
@@ -152,12 +158,12 @@ impl<'a> Runtime<'a> {
       })
       .unwrap();
     for (i, net) in rule.0.iter().enumerate() {
-      let dst = self.get(port1.arg(i as u32));
-      self.instantiate_net(dst, net);
+      let dst = self.get(port1, i as u32);
+      self.graft(dst, net);
     }
     for (i, net) in rule.1.iter().enumerate() {
-      let dst = self.get(port2.arg(i as u32));
-      self.instantiate_net(dst, net);
+      let dst = self.get(port2, i as u32);
+      self.graft(dst, net);
     }
     self.free(port1, rule.0.len() as u32);
     self.free(port2, rule.1.len() as u32);
@@ -168,16 +174,17 @@ impl<'a> Runtime<'a> {
       format!("null {}", port.adr())
     } else if port.is_auxillary() {
       format!("aux {}", port.adr())
-    } else if port.is_nullary() {
-      let node = &self.program.nodes[port.kind() as usize];
-      format!("{} {}", &node.name, port.adr())
     } else {
       let node = &self.program.nodes[port.kind() as usize];
-      format!(
-        "{} {:?}",
-        &node.name,
-        port.adr()..=port.adr() + (node.arity as u32)
-      )
+      if node.arity == 0 {
+        format!("{}", &node.name)
+      } else {
+        format!(
+          "{} {:?}",
+          &node.name,
+          port.adr()..port.adr() + (node.arity as u32)
+        )
+      }
     })
   }
   pub fn dbg_port_vec<'b>(&'b self, vec: &'b Vec<Port>) -> impl std::fmt::Debug + 'b {
@@ -192,14 +199,17 @@ impl<'a> Runtime<'a> {
   pub fn dbg_tree<'b>(&'b self, port: Port) -> impl std::fmt::Debug + 'b {
     DebugFn(move |f| {
       write!(f, "{:?}", self.dbg_port(port))?;
-      if !port.is_principal() || port.is_nullary() {
+      if !port.is_principal() {
         return Ok(());
       }
       let node = &self.program.nodes[port.kind() as usize];
+      if node.arity == 0 {
+        return Ok(());
+      }
       f.write_char(' ')?;
       let mut f = f.debug_list();
-      for i in 0..node.arity as u32 {
-        f.entry(&self.dbg_tree(self.get(port.arg(i))));
+      for i in 0..node.arity {
+        f.entry(&self.dbg_tree(self.get(port, i)));
       }
       f.finish()
     })
@@ -226,8 +236,8 @@ impl<'a> std::fmt::Debug for Runtime<'a> {
     let mut f = f.debug_struct("Runtime");
     f.field("mem", &self.dbg_port_vec(&self.mem));
     f.field("vars", &self.dbg_port_vec(&self.vars));
-    f.field("work", &self.dbg_port_vec(&self.work));
-    f.field("gens", &self.gens);
+    // f.field("work", &self.dbg_port_vec(&self.work));
+    f.field("gens", &self.steps);
     f.finish()
   }
 }
