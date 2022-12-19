@@ -175,8 +175,12 @@ impl<'a> Runtime<'a> {
   pub fn dbg_mem<'b>(&'b self, vec: &'b Vec<Port>) -> impl std::fmt::Debug + 'b {
     DebugFn(|f| {
       let mut f = f.debug_map();
-      let mut arity_left = 0;
-      for (i, &port) in vec.iter().enumerate() {
+      let mut arity_left = self.program.init.vars;
+      f.entry(
+        &DebugFn(|f| write!(f, "_")),
+        &DebugFn(|f| write!(f, "free")),
+      );
+      for (i, &port) in vec.iter().enumerate().skip(self.program.kinds.len()) {
         if arity_left > 0 {
           arity_left -= 1;
           f.entry(&i, &DebugFn(|f| write!(f, "  {:?}", self.dbg_port(port))));

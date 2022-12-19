@@ -11,6 +11,7 @@ fn main() {
   let program = build_program(&parse(&fs::read_to_string(&args[1]).unwrap()));
   dbg!(&program);
   let mut runtime = Runtime::new(&program);
+  dbg!(&runtime);
   while !runtime.normal() {
     // dbg!(&runtime);
     runtime.reduce();
