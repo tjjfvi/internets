@@ -10,6 +10,7 @@ impl Nat {
   pub const ZERO: Kind = Kind(2);
   pub const SUCC: Kind = Kind(3);
   pub const ADD: Kind = Kind(4);
+  pub const MUL: Kind = Kind(5);
 }
 
 impl Net for Nat {
@@ -22,12 +23,12 @@ impl Net for Nat {
     match (a_kind, b_kind) {
       (Nat::ERASE, Nat::ZERO) => {}
       (Nat::CLONE, Nat::ZERO) => {
-        mem.relink_nullary(a_addr + RelAddr::new(1), Nat::ZERO);
-        mem.relink_nullary(a_addr + RelAddr::new(2), Nat::ZERO);
+        mem.link_opp_nil(a_addr + RelAddr::new(1), Nat::ZERO);
+        mem.link_opp_nil(a_addr + RelAddr::new(2), Nat::ZERO);
         mem.free(a_addr, 3);
       }
       (Nat::ERASE, Nat::SUCC) => {
-        mem.relink_nullary(b_addr + RelAddr::new(1), Nat::ERASE);
+        mem.link_opp_nil(b_addr + RelAddr::new(1), Nat::ERASE);
         mem.free(b_addr, 2);
       }
       (Nat::CLONE, Nat::SUCC) => {
@@ -40,26 +41,51 @@ impl Net for Nat {
           Word::port(RelAddr::new(-4), PortMode::Auxiliary),
           Word::port(RelAddr::new(-3), PortMode::Auxiliary),
         ]);
-        mem.relink_principal(
+        mem.link_opp_prn(
           b_addr + RelAddr::new(1),
           Nat::CLONE,
           chunk + RelAddr::new(4),
         );
-        mem.relink_principal(a_addr + RelAddr::new(1), Nat::SUCC, chunk);
-        mem.relink_principal(a_addr + RelAddr::new(2), Nat::SUCC, chunk + RelAddr::new(2));
+        mem.link_opp_prn(a_addr + RelAddr::new(1), Nat::SUCC, chunk);
+        mem.link_opp_prn(a_addr + RelAddr::new(2), Nat::SUCC, chunk + RelAddr::new(2));
         mem.free(a_addr, 3);
         mem.free(b_addr, 2);
       }
       (Nat::ZERO, Nat::ADD) => {
-        mem.relink(b_addr + RelAddr::new(1), b_addr + RelAddr::new(2));
+        mem.link_opp_opp(b_addr + RelAddr::new(1), b_addr + RelAddr::new(2));
         mem.free(b_addr, 3);
       }
       (Nat::SUCC, Nat::ADD) => {
         let a_pred = a_addr + RelAddr::new(1);
         let b_out = b_addr + RelAddr::new(2);
-        mem.relink_principal(b_out, Nat::SUCC, a_addr);
-        mem.relink_principal(a_pred, Nat::ADD, b_addr);
-        mem.link_auxillary(a_pred, b_out);
+        mem.link_opp_prn(b_out, Nat::SUCC, a_addr);
+        mem.link_opp_prn(a_pred, Nat::ADD, b_addr);
+        mem.link_aux_aux(a_pred, b_out);
+      }
+      (Nat::ZERO, Nat::MUL) => {
+        mem.link_opp_nil(b_addr + RelAddr::new(1), Nat::ERASE);
+        mem.link_opp_nil(b_addr + RelAddr::new(2), Nat::ZERO);
+        mem.free(b_addr, 3);
+      }
+      (Nat::SUCC, Nat::MUL) => {
+        let chunk = mem.alloc(&[
+          Word::kind(Nat::ADD),
+          Word::NULL,
+          Word::NULL,
+          Word::kind(Nat::CLONE),
+          Word::port(RelAddr::new(-4), PortMode::Principal),
+          Word::NULL,
+        ]);
+        mem.link_opp_aux(b_addr + RelAddr::new(2), chunk + RelAddr::new(2));
+        mem.link_aux_aux(b_addr + RelAddr::new(2), chunk + RelAddr::new(1));
+        mem.link_opp_prn(
+          b_addr + RelAddr::new(1),
+          Nat::CLONE,
+          chunk + RelAddr::new(3),
+        );
+        mem.link_aux_aux(b_addr + RelAddr::new(1), chunk + RelAddr::new(5));
+        mem.link_opp_prn(a_addr + RelAddr::new(1), Nat::MUL, b_addr);
+        mem.free(a_addr, 2)
       }
       _ => unimplemented!(),
     }
@@ -67,16 +93,16 @@ impl Net for Nat {
 }
 
 fn main() {
-  let mut mem = Mem::new(64);
+  let mut mem = Mem::new(256);
   let base = mem.alloc(&[
     Word::port(RelAddr::new(3), PortMode::Auxiliary),
-    Word::kind(Nat::ADD),
+    Word::kind(Nat::MUL),
     Word::port(RelAddr::new(4), PortMode::Auxiliary),
     Word::port(RelAddr::new(-3), PortMode::Auxiliary),
     Word::kind(Nat::CLONE),
     Word::port(RelAddr::new(-4), PortMode::Principal),
     Word::port(RelAddr::new(-4), PortMode::Auxiliary),
-    Word::kind(Nat::ADD),
+    Word::kind(Nat::MUL),
     Word::port(RelAddr::new(4), PortMode::Auxiliary),
     Word::port(RelAddr::new(-5), PortMode::Principal),
     Word::kind(Nat::CLONE),

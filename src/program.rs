@@ -30,6 +30,7 @@ pub const WORD_SIZE: usize = 4;
 const _WORD_SIZE_IS_FOUR: [u8; WORD_SIZE] = [0; size_of::<Word>()];
 
 impl Word {
+  pub const NULL: Word = Word(0);
   #[inline(always)]
   pub fn unpack(self) -> UnpackedWord {
     match self.0 & 0b11 {
@@ -50,14 +51,14 @@ impl Word {
       _ => panic!("expected Kind word, got {:?}", self),
     }
   }
-  pub fn null() -> Self {
-    Word(0)
-  }
+  // pub fn null() -> Self {
+  //   Word(0)
+  // }
   pub fn kind(kind: Kind) -> Self {
     Word((kind.0 as u32) << 2 | 1)
   }
-  pub fn port(upper: RelAddr, mode: PortMode) -> Self {
-    Word((upper.0 as u32) | 2 | mode as u32)
+  pub fn port(rel: RelAddr, mode: PortMode) -> Self {
+    Word((rel.0 as u32) | 2 | mode as u32)
   }
 }
 
@@ -104,7 +105,7 @@ pub struct Mem {
 impl Mem {
   pub fn new(size: usize) -> Self {
     Mem {
-      buffer: vec![Word::null(); size].into_boxed_slice(),
+      buffer: vec![Word::NULL; size].into_boxed_slice(),
       alloc_idx: 0,
       active: Vec::new(),
     }
@@ -147,25 +148,25 @@ impl Mem {
   }
   pub fn free(&mut self, addr: Addr, len: usize) {
     self.assert_valid(addr, len * WORD_SIZE);
-    unsafe { std::slice::from_raw_parts_mut(addr.0, len) }.fill(Word::null());
+    unsafe { std::slice::from_raw_parts_mut(addr.0, len) }.fill(Word::NULL);
   }
 
-  pub fn relink(&mut self, a: Addr, b: Addr) {
+  pub fn link_opp_opp(&mut self, a: Addr, b: Addr) {
     match self.word(b).unpack() {
-      UnpackedWord::Kind(kind) => self.relink_nullary(a, kind),
-      UnpackedWord::Port(rel, PortMode::Auxiliary) => self.relink_auxillary(a, b + rel),
+      UnpackedWord::Kind(kind) => self.link_opp_nil(a, kind),
+      UnpackedWord::Port(rel, PortMode::Auxiliary) => self.link_opp_aux(a, b + rel),
       UnpackedWord::Port(rel, PortMode::Principal) => {
-        self.relink_principal(a, self.word(b + rel).as_kind(), b + rel)
+        self.link_opp_prn(a, self.word(b + rel).as_kind(), b + rel)
       }
       _ => unreachable!(),
     }
   }
 
-  pub fn relink_nullary(&mut self, old: Addr, kind: Kind) {
+  pub fn link_opp_nil(&mut self, old: Addr, kind: Kind) {
     let old_port = self.word(old);
     match old_port.unpack() {
       UnpackedWord::Kind(_) => {
-        // two nullary agents annihilate
+        // two nilary agents annihilate
       }
       UnpackedWord::Port(rel, other_mode) => {
         let addr = old + rel;
@@ -184,12 +185,16 @@ impl Mem {
     }
   }
 
-  pub fn link_auxillary(&mut self, a: Addr, b: Addr) {
+  pub fn link_aux_aux(&mut self, a: Addr, b: Addr) {
     *self.word_mut(a) = Word::port(b - a, PortMode::Auxiliary);
     *self.word_mut(b) = Word::port(a - b, PortMode::Auxiliary);
   }
 
-  pub fn relink_auxillary(&mut self, old: Addr, new: Addr) {
+  pub fn link_aux_prn(&mut self, a: Addr, b: Addr) {
+    *self.word_mut(a) = Word::port(b - a, PortMode::Principal);
+  }
+
+  pub fn link_opp_aux(&mut self, old: Addr, new: Addr) {
     let old_port = self.word(old);
     match old_port.unpack() {
       UnpackedWord::Kind(_) => *self.word_mut(new) = old_port,
@@ -204,7 +209,7 @@ impl Mem {
     }
   }
 
-  pub fn relink_principal(&mut self, old: Addr, new_kind: Kind, new: Addr) {
+  pub fn link_opp_prn(&mut self, old: Addr, new_kind: Kind, new: Addr) {
     match self.word(old).unpack() {
       UnpackedWord::Kind(kind) => self
         .active
