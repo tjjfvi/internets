@@ -13,26 +13,31 @@ impl Nat {
   pub const MUL: Kind = Kind(5);
 }
 
-impl Net for Nat {
-  fn reduce(&self, mem: &mut Mem, pair: ActivePair) {
-    let ActivePair(a_kind, a_addr, b_kind, b_addr) = if pair.0 > pair.2 {
-      ActivePair(pair.2, pair.3, pair.0, pair.1)
-    } else {
-      pair
-    };
+impl Interactions for Nat {
+  fn reduce(&self, net: &mut Net, pair: ActivePair) {
+    let ((a_kind, a_addr), (b_kind, b_addr)) = net.resolve_active_pair(pair);
     match (a_kind, b_kind) {
       (Nat::ERASE, Nat::ZERO) => {}
       (Nat::CLONE, Nat::ZERO) => {
-        mem.link_opp_nil(a_addr + RelAddr::new(1), Nat::ZERO);
-        mem.link_opp_nil(a_addr + RelAddr::new(2), Nat::ZERO);
-        mem.free(a_addr, 3);
+        net.link(
+          LinkHalf::From(a_addr + RelAddr::new(1)),
+          LinkHalf::Kind(Nat::ZERO),
+        );
+        net.link(
+          LinkHalf::From(a_addr + RelAddr::new(2)),
+          LinkHalf::Kind(Nat::ZERO),
+        );
+        net.free(a_addr, 3);
       }
       (Nat::ERASE, Nat::SUCC) => {
-        mem.link_opp_nil(b_addr + RelAddr::new(1), Nat::ERASE);
-        mem.free(b_addr, 2);
+        net.link(
+          LinkHalf::From(b_addr + RelAddr::new(1)),
+          LinkHalf::Kind(Nat::ERASE),
+        );
+        net.free(b_addr, 2);
       }
       (Nat::CLONE, Nat::SUCC) => {
-        let chunk = mem.alloc(&[
+        let chunk = net.alloc(&[
           Word::kind(Nat::SUCC),
           Word::port(RelAddr::new(4), PortMode::Auxiliary),
           Word::kind(Nat::SUCC),
@@ -41,34 +46,57 @@ impl Net for Nat {
           Word::port(RelAddr::new(-4), PortMode::Auxiliary),
           Word::port(RelAddr::new(-3), PortMode::Auxiliary),
         ]);
-        mem.link_opp_prn(
-          b_addr + RelAddr::new(1),
-          Nat::CLONE,
-          chunk + RelAddr::new(4),
+        net.link(
+          LinkHalf::From(b_addr + RelAddr::new(1)),
+          LinkHalf::Port(chunk + RelAddr::new(4), PortMode::Principal),
         );
-        mem.link_opp_prn(a_addr + RelAddr::new(1), Nat::SUCC, chunk);
-        mem.link_opp_prn(a_addr + RelAddr::new(2), Nat::SUCC, chunk + RelAddr::new(2));
-        mem.free(a_addr, 3);
-        mem.free(b_addr, 2);
+        net.link(
+          LinkHalf::From(a_addr + RelAddr::new(1)),
+          LinkHalf::Port(chunk, PortMode::Principal),
+        );
+        net.link(
+          LinkHalf::From(a_addr + RelAddr::new(2)),
+          LinkHalf::Port(chunk + RelAddr::new(2), PortMode::Principal),
+        );
+        net.free(a_addr, 3);
+        net.free(b_addr, 2);
       }
       (Nat::ZERO, Nat::ADD) => {
-        mem.link_opp_opp(b_addr + RelAddr::new(1), b_addr + RelAddr::new(2));
-        mem.free(b_addr, 3);
+        net.link(
+          LinkHalf::From(b_addr + RelAddr::new(1)),
+          LinkHalf::From(b_addr + RelAddr::new(2)),
+        );
+        net.free(b_addr, 3);
       }
       (Nat::SUCC, Nat::ADD) => {
         let a_pred = a_addr + RelAddr::new(1);
         let b_out = b_addr + RelAddr::new(2);
-        mem.link_opp_prn(b_out, Nat::SUCC, a_addr);
-        mem.link_opp_prn(a_pred, Nat::ADD, b_addr);
-        mem.link_aux_aux(a_pred, b_out);
+        net.link(
+          LinkHalf::From(b_out),
+          LinkHalf::Port(a_addr, PortMode::Principal),
+        );
+        net.link(
+          LinkHalf::From(a_pred),
+          LinkHalf::Port(b_addr, PortMode::Principal),
+        );
+        net.link(
+          LinkHalf::Port(a_pred, PortMode::Auxiliary),
+          LinkHalf::Port(b_out, PortMode::Auxiliary),
+        );
       }
       (Nat::ZERO, Nat::MUL) => {
-        mem.link_opp_nil(b_addr + RelAddr::new(1), Nat::ERASE);
-        mem.link_opp_nil(b_addr + RelAddr::new(2), Nat::ZERO);
-        mem.free(b_addr, 3);
+        net.link(
+          LinkHalf::From(b_addr + RelAddr::new(1)),
+          LinkHalf::Kind(Nat::ERASE),
+        );
+        net.link(
+          LinkHalf::From(b_addr + RelAddr::new(2)),
+          LinkHalf::Kind(Nat::ZERO),
+        );
+        net.free(b_addr, 3);
       }
       (Nat::SUCC, Nat::MUL) => {
-        let chunk = mem.alloc(&[
+        let chunk = net.alloc(&[
           Word::kind(Nat::ADD),
           Word::NULL,
           Word::NULL,
@@ -76,25 +104,36 @@ impl Net for Nat {
           Word::port(RelAddr::new(-4), PortMode::Principal),
           Word::NULL,
         ]);
-        mem.link_opp_aux(b_addr + RelAddr::new(2), chunk + RelAddr::new(2));
-        mem.link_aux_aux(b_addr + RelAddr::new(2), chunk + RelAddr::new(1));
-        mem.link_opp_prn(
-          b_addr + RelAddr::new(1),
-          Nat::CLONE,
-          chunk + RelAddr::new(3),
+        net.link(
+          LinkHalf::From(b_addr + RelAddr::new(2)),
+          LinkHalf::Port(chunk + RelAddr::new(2), PortMode::Auxiliary),
         );
-        mem.link_aux_aux(b_addr + RelAddr::new(1), chunk + RelAddr::new(5));
-        mem.link_opp_prn(a_addr + RelAddr::new(1), Nat::MUL, b_addr);
-        mem.free(a_addr, 2)
+        net.link(
+          LinkHalf::Port(b_addr + RelAddr::new(2), PortMode::Auxiliary),
+          LinkHalf::Port(chunk + RelAddr::new(1), PortMode::Auxiliary),
+        );
+        net.link(
+          LinkHalf::From(b_addr + RelAddr::new(1)),
+          LinkHalf::Port(chunk + RelAddr::new(3), PortMode::Principal),
+        );
+        net.link(
+          LinkHalf::Port(b_addr + RelAddr::new(1), PortMode::Auxiliary),
+          LinkHalf::Port(chunk + RelAddr::new(5), PortMode::Auxiliary),
+        );
+        net.link(
+          LinkHalf::From(a_addr + RelAddr::new(1)),
+          LinkHalf::Port(b_addr, PortMode::Principal),
+        );
+        net.free(a_addr, 2)
       }
-      _ => unimplemented!(),
+      _ => unimplemented!("{:?} {:?}", a_kind, b_kind),
     }
   }
 }
 
 fn main() {
-  let mut mem = Mem::new(256);
-  let base = mem.alloc(&[
+  let mut net = Net::new(1 << 16);
+  let base = net.alloc(&[
     Word::port(RelAddr::new(3), PortMode::Auxiliary),
     Word::kind(Nat::MUL),
     Word::port(RelAddr::new(4), PortMode::Auxiliary),
@@ -113,18 +152,16 @@ fn main() {
     Word::kind(Nat::SUCC),
     Word::kind(Nat::ZERO),
   ]);
-  mem.active.push(ActivePair(
-    Nat::CLONE,
-    base + RelAddr::new(10),
-    Nat::SUCC,
-    base + RelAddr::new(13),
-  ));
-  dbg!(&mem);
+  net.link(
+    LinkHalf::Port(base + RelAddr::new(10), PortMode::Principal),
+    LinkHalf::Port(base + RelAddr::new(13), PortMode::Principal),
+  );
   let mut count = 0;
-  while let Some(pair) = mem.active.pop() {
+  while let Some(pair) = net.active.pop() {
+    // dbg!(&net);
     count += 1;
-    Nat.reduce(&mut mem, pair);
-    dbg!(&mem);
+    Nat.reduce(&mut net, pair);
   }
+  dbg!(&net);
   dbg!(count);
 }

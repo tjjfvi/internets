@@ -9,7 +9,11 @@ pub struct Word(u32);
 
 impl Debug for Word {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    self.unpack().fmt(f)
+    match self.mode() {
+      WordMode::Null => write!(f, "Null"),
+      WordMode::Kind => write!(f, "Kind({:?})", self.as_kind().0),
+      WordMode::Port(mode) => write!(f, "Port({:?}, {:?})", self.as_port().0 / 4, mode),
+    }
   }
 }
 
@@ -20,10 +24,10 @@ pub enum PortMode {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum UnpackedWord {
+enum WordMode {
   Null,
-  Kind(Kind),
-  Port(RelAddr, PortMode),
+  Kind,
+  Port(PortMode),
 }
 
 pub const WORD_SIZE: usize = 4;
@@ -32,24 +36,27 @@ const _WORD_SIZE_IS_FOUR: [u8; WORD_SIZE] = [0; size_of::<Word>()];
 impl Word {
   pub const NULL: Word = Word(0);
   #[inline(always)]
-  pub fn unpack(self) -> UnpackedWord {
+  fn mode(self) -> WordMode {
     match self.0 & 0b11 {
-      0 => UnpackedWord::Null,
-      1 => UnpackedWord::Kind(Kind(self.0 >> 2)),
-      _ => UnpackedWord::Port(
-        RelAddr((self.0 & !0b11) as i32),
-        match self.0 & 0b1 {
-          0 => PortMode::Auxiliary,
-          _ => PortMode::Principal,
-        },
-      ),
+      0 => WordMode::Null,
+      1 => WordMode::Kind,
+      2 | 3 => WordMode::Port(match self.0 & 0b1 {
+        0 => PortMode::Auxiliary,
+        1 => PortMode::Principal,
+        _ => unreachable!(),
+      }),
+      _ => unreachable!(),
     }
   }
-  pub fn as_kind(self) -> Kind {
-    match self.unpack() {
-      UnpackedWord::Kind(kind) => kind,
-      _ => panic!("expected Kind word, got {:?}", self),
-    }
+  #[inline(always)]
+  fn as_port(self) -> RelAddr {
+    debug_assert!(matches!(self.mode(), WordMode::Port(_)));
+    RelAddr((self.0 & !0b11) as i32)
+  }
+  #[inline(always)]
+  fn as_kind(self) -> Kind {
+    debug_assert!(matches!(self.mode(), WordMode::Kind));
+    Kind((self.0 >> 2) as u32)
   }
   // pub fn null() -> Self {
   //   Word(0)
@@ -96,15 +103,21 @@ impl Sub<Addr> for Addr {
 }
 
 #[derive(Debug)]
-pub struct Mem {
+pub struct Net {
   buffer: Box<[Word]>,
   alloc_idx: usize,
   pub active: Vec<ActivePair>,
 }
 
-impl Mem {
+pub enum LinkHalf {
+  From(Addr),
+  Kind(Kind),
+  Port(Addr, PortMode),
+}
+
+impl Net {
   pub fn new(size: usize) -> Self {
-    Mem {
+    Net {
       buffer: vec![Word::NULL; size].into_boxed_slice(),
       alloc_idx: 0,
       active: Vec::new(),
@@ -151,87 +164,101 @@ impl Mem {
     unsafe { std::slice::from_raw_parts_mut(addr.0, len) }.fill(Word::NULL);
   }
 
-  pub fn link_opp_opp(&mut self, a: Addr, b: Addr) {
-    match self.word(b).unpack() {
-      UnpackedWord::Kind(kind) => self.link_opp_nil(a, kind),
-      UnpackedWord::Port(rel, PortMode::Auxiliary) => self.link_opp_aux(a, b + rel),
-      UnpackedWord::Port(rel, PortMode::Principal) => {
-        self.link_opp_prn(a, self.word(b + rel).as_kind(), b + rel)
-      }
-      _ => unreachable!(),
-    }
-  }
-
-  pub fn link_opp_nil(&mut self, old: Addr, kind: Kind) {
-    let old_port = self.word(old);
-    match old_port.unpack() {
-      UnpackedWord::Kind(_) => {
-        // two nilary agents annihilate
-      }
-      UnpackedWord::Port(rel, other_mode) => {
-        let addr = old + rel;
-        if other_mode == PortMode::Auxiliary {
-          *self.word_mut(addr) = Word::kind(kind)
-        } else {
-          self.active.push(ActivePair(
-            self.word(addr).as_kind(),
-            addr,
-            kind,
-            Addr::NULL,
-          ))
-        }
-      }
-      _ => unreachable!(),
-    }
-  }
-
-  pub fn link_aux_aux(&mut self, a: Addr, b: Addr) {
+  fn link_aux_aux(&mut self, a: Addr, b: Addr) {
     *self.word_mut(a) = Word::port(b - a, PortMode::Auxiliary);
     *self.word_mut(b) = Word::port(a - b, PortMode::Auxiliary);
   }
 
-  pub fn link_aux_prn(&mut self, a: Addr, b: Addr) {
+  fn link_aux_prn(&mut self, a: Addr, b: Addr) {
     *self.word_mut(a) = Word::port(b - a, PortMode::Principal);
   }
 
-  pub fn link_opp_aux(&mut self, old: Addr, new: Addr) {
-    let old_port = self.word(old);
-    match old_port.unpack() {
-      UnpackedWord::Kind(_) => *self.word_mut(new) = old_port,
-      UnpackedWord::Port(rel, other_mode) => {
-        let addr = old + rel;
-        *self.word_mut(new) = Word::port(addr - new, other_mode);
-        if other_mode == PortMode::Auxiliary {
-          *self.word_mut(addr) = Word::port(new - addr, PortMode::Auxiliary);
+  fn link_aux_nil(&mut self, a: Addr, b: Kind) {
+    *self.word_mut(a) = Word::kind(b)
+  }
+
+  fn link_prn_prn(&mut self, a: Addr, b: Addr) {
+    self.active.push(ActivePair(
+      Word::port(a - self.origin(), PortMode::Principal),
+      Word::port(b - self.origin(), PortMode::Principal),
+    ));
+  }
+
+  fn link_prn_nil(&mut self, a: Addr, b: Kind) {
+    self.active.push(ActivePair(
+      Word::port(a - self.origin(), PortMode::Principal),
+      Word::kind(b),
+    ));
+  }
+
+  fn link_nil_nil(&mut self, _a: Kind, _b: Kind) {
+    // they just annihilate
+  }
+
+  #[inline(always)]
+  fn get_link_half(&self, link_half: LinkHalf) -> LinkHalf {
+    match link_half {
+      LinkHalf::From(addr) => {
+        let word = self.word(addr);
+        match word.mode() {
+          WordMode::Kind => LinkHalf::Kind(word.as_kind()),
+          WordMode::Port(mode) => LinkHalf::Port(addr + word.as_port(), mode),
+          _ => unreachable!(),
         }
+      }
+      x => x,
+    }
+  }
+
+  #[inline(always)]
+  pub fn link(&mut self, a: LinkHalf, b: LinkHalf) {
+    let a = self.get_link_half(a);
+    let b = self.get_link_half(b);
+    use LinkHalf::*;
+    use PortMode::*;
+    match (a, b) {
+      (Port(a, Auxiliary), Port(b, Auxiliary)) => self.link_aux_aux(a, b),
+      (Port(a, Auxiliary), Port(b, Principal)) => self.link_aux_prn(a, b),
+      (Port(a, Auxiliary), Kind(b)) => self.link_aux_nil(a, b),
+      (Port(a, Principal), Port(b, Auxiliary)) => self.link_aux_prn(b, a),
+      (Port(a, Principal), Port(b, Principal)) => self.link_prn_prn(a, b),
+      (Port(a, Principal), Kind(b)) => self.link_prn_nil(a, b),
+      (Kind(a), Port(b, Auxiliary)) => self.link_aux_nil(b, a),
+      (Kind(a), Port(b, Principal)) => self.link_prn_nil(b, a),
+      (Kind(a), Kind(b)) => self.link_nil_nil(a, b),
+      _ => unreachable!(),
+    }
+  }
+
+  fn origin(&self) -> Addr {
+    Addr(&self.buffer[0] as *const Word as *mut Word)
+  }
+
+  fn resolve_active_half(&self, word: Word) -> (Kind, Addr) {
+    match word.mode() {
+      WordMode::Kind => (word.as_kind(), Addr::NULL),
+      WordMode::Port(PortMode::Principal) => {
+        let addr = self.origin() + word.as_port();
+        (self.word(addr).as_kind(), addr)
       }
       _ => unreachable!(),
     }
   }
 
-  pub fn link_opp_prn(&mut self, old: Addr, new_kind: Kind, new: Addr) {
-    match self.word(old).unpack() {
-      UnpackedWord::Kind(kind) => self
-        .active
-        .push(ActivePair(kind, Addr::NULL, new_kind, new)),
-      UnpackedWord::Port(rel, other_mode) => {
-        let addr = old + rel;
-        if other_mode == PortMode::Auxiliary {
-          *self.word_mut(addr) = Word::port(new - addr, PortMode::Principal);
-        } else {
-          self
-            .active
-            .push(ActivePair(self.word(addr).as_kind(), addr, new_kind, new))
-        }
-      }
-      _ => unreachable!(),
+  pub fn resolve_active_pair(&self, pair: ActivePair) -> ((Kind, Addr), (Kind, Addr)) {
+    let a = self.resolve_active_half(pair.0);
+    let b = self.resolve_active_half(pair.1);
+    if a.0 > b.0 {
+      (b, a)
+    } else {
+      (a, b)
     }
   }
 }
 
 #[derive(Debug)]
-pub struct ActivePair(pub Kind, pub Addr, pub Kind, pub Addr);
+pub struct ActivePair(Word, Word);
 
-pub trait Net {
-  fn reduce(&self, mem: &mut Mem, pair: ActivePair);
+pub trait Interactions {
+  fn reduce(&self, net: &mut Net, pair: ActivePair);
 }
