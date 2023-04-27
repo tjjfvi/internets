@@ -11,8 +11,8 @@ impl Debug for Word {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self.mode() {
       WordMode::Null => write!(f, "Null"),
-      WordMode::Kind => write!(f, "Kind({:?})", self.as_kind().0),
-      WordMode::Port(mode) => write!(f, "Port({:?}, {:?})", self.as_port().0 / 4, mode),
+      WordMode::Kind => write!(f, "Kind({:?})", self.as_kind().id),
+      WordMode::Port(mode) => write!(f, "Port({:?}, {:?})", self.as_port().offset_bytes / 4, mode),
     }
   }
 }
@@ -36,7 +36,7 @@ const _WORD_SIZE_IS_FOUR: [u8; WORD_SIZE] = [0; size_of::<Word>()];
 impl Word {
   pub const NULL: Word = Word(0);
   #[inline(always)]
-  fn mode(self) -> WordMode {
+  const fn mode(self) -> WordMode {
     match self.0 & 0b11 {
       0 => WordMode::Null,
       1 => WordMode::Kind,
@@ -49,28 +49,39 @@ impl Word {
     }
   }
   #[inline(always)]
-  fn as_port(self) -> RelAddr {
+  const fn as_port(self) -> Delta {
     debug_assert!(matches!(self.mode(), WordMode::Port(_)));
-    RelAddr((self.0 & !0b11) as i32)
+    Delta {
+      offset_bytes: (self.0 & !0b11) as i32,
+    }
   }
   #[inline(always)]
-  fn as_kind(self) -> Kind {
+  const fn as_kind(self) -> Kind {
     debug_assert!(matches!(self.mode(), WordMode::Kind));
-    Kind((self.0 >> 2) as u32)
+    Kind {
+      id: (self.0 >> 2) as u32,
+    }
   }
-  // pub fn null() -> Self {
-  //   Word(0)
-  // }
-  pub fn kind(kind: Kind) -> Self {
-    Word((kind.0 as u32) << 2 | 1)
+  #[inline(always)]
+  pub const fn kind(kind: Kind) -> Self {
+    Word((kind.id as u32) << 2 | 1)
   }
-  pub fn port(rel: RelAddr, mode: PortMode) -> Self {
-    Word((rel.0 as u32) | 2 | mode as u32)
+  #[inline(always)]
+  pub const fn port(delta: Delta, mode: PortMode) -> Self {
+    Word((delta.offset_bytes as u32) | 2 | mode as u32)
   }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Kind(pub u32);
+pub struct Kind {
+  pub id: u32,
+}
+
+impl Kind {
+  pub const fn of(id: u32) -> Kind {
+    Kind { id }
+  }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Addr(*mut Word);
@@ -80,25 +91,34 @@ impl Addr {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct RelAddr(i32);
+pub struct Delta {
+  offset_bytes: i32,
+}
 
-impl RelAddr {
-  pub fn new(idx: i32) -> RelAddr {
-    RelAddr(idx * 4)
+impl Delta {
+  #[inline(always)]
+  pub const fn of(delta: i32) -> Delta {
+    Delta {
+      offset_bytes: delta * (WORD_SIZE as i32),
+    }
   }
 }
 
-impl Add<RelAddr> for Addr {
+impl Add<Delta> for Addr {
   type Output = Addr;
-  fn add(self, rel: RelAddr) -> Self::Output {
-    Addr(((self.0 as isize) + (rel.0 as isize)) as *mut Word)
+  #[inline(always)]
+  fn add(self, delta: Delta) -> Self::Output {
+    Addr(((self.0 as isize) + (delta.offset_bytes as isize)) as *mut Word)
   }
 }
 
 impl Sub<Addr> for Addr {
-  type Output = RelAddr;
+  type Output = Delta;
+  #[inline(always)]
   fn sub(self, base: Addr) -> Self::Output {
-    RelAddr(((self.0 as isize) - (base.0 as isize)) as i32)
+    Delta {
+      offset_bytes: ((self.0 as isize) - (base.0 as isize)) as i32,
+    }
   }
 }
 
@@ -106,7 +126,7 @@ impl Sub<Addr> for Addr {
 pub struct Net {
   buffer: Box<[Word]>,
   alloc_idx: usize,
-  pub active: Vec<ActivePair>,
+  active: Vec<ActivePair>,
 }
 
 pub enum LinkHalf {
@@ -123,6 +143,7 @@ impl Net {
       active: Vec::new(),
     }
   }
+
   fn assert_valid(&self, addr: Addr, width: usize) {
     let buffer_start = (&self.buffer[0]) as *const Word as usize;
     let buffer_end = buffer_start + self.buffer.len() * WORD_SIZE;
@@ -130,35 +151,24 @@ impl Net {
     assert!(addr.0 as usize + width <= buffer_end);
     assert!(addr.0 as usize & 0b11 == 0);
   }
-  pub fn word(&self, addr: Addr) -> Word {
+
+  fn word(&self, addr: Addr) -> Word {
     self.assert_valid(addr, WORD_SIZE);
     unsafe { *addr.0 }
   }
-  pub fn word_mut(&mut self, addr: Addr) -> &mut Word {
+
+  fn word_mut(&mut self, addr: Addr) -> &mut Word {
     self.assert_valid(addr, WORD_SIZE);
     unsafe { &mut *addr.0 }
   }
-  // pub fn u32(&self, addr: Addr) -> u32 {
-  //   self.word(addr).0
-  // }
-  // pub fn u32_mut(&mut self, addr: Addr) -> &mut u32 {
-  //   self.assert_valid(addr, 4);
-  //   unsafe { &mut *(addr.0 as *mut u32) }
-  // }
-  // pub fn u64(&self, addr: Addr) -> u64 {
-  //   self.assert_valid(addr, 8);
-  //   unsafe { *(addr.0 as *const u64) }
-  // }
-  // pub fn u64_mut(&mut self, addr: Addr) -> &mut u64 {
-  //   self.assert_valid(addr, 8);
-  //   unsafe { &mut *(addr.0 as *mut u64) }
-  // }
+
   pub fn alloc(&mut self, data: &[Word]) -> Addr {
     let old_idx = self.alloc_idx;
     self.alloc_idx += data.len();
     self.buffer[old_idx..self.alloc_idx].copy_from_slice(data);
     Addr(&mut self.buffer[old_idx] as *mut Word)
   }
+
   pub fn free(&mut self, addr: Addr, len: usize) {
     self.assert_valid(addr, len * WORD_SIZE);
     unsafe { std::slice::from_raw_parts_mut(addr.0, len) }.fill(Word::NULL);
@@ -245,7 +255,7 @@ impl Net {
     }
   }
 
-  pub fn resolve_active_pair(&self, pair: ActivePair) -> ((Kind, Addr), (Kind, Addr)) {
+  fn resolve_active_pair(&self, pair: ActivePair) -> ((Kind, Addr), (Kind, Addr)) {
     let a = self.resolve_active_half(pair.0);
     let b = self.resolve_active_half(pair.1);
     if a.0 > b.0 {
@@ -254,11 +264,21 @@ impl Net {
       (a, b)
     }
   }
+
+  pub fn reduce(&mut self, interactions: &impl Interactions) -> bool {
+    if let Some(pair) = self.active.pop() {
+      let (a, b) = self.resolve_active_pair(pair);
+      interactions.reduce(self, a, b);
+      true
+    } else {
+      false
+    }
+  }
 }
 
 #[derive(Debug)]
-pub struct ActivePair(Word, Word);
+struct ActivePair(Word, Word);
 
 pub trait Interactions {
-  fn reduce(&self, net: &mut Net, pair: ActivePair);
+  fn reduce(&self, net: &mut Net, a: (Kind, Addr), b: (Kind, Addr));
 }
