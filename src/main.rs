@@ -1,5 +1,19 @@
+mod addr;
+mod alloc;
+mod delta;
+mod kind;
+mod link;
 mod net;
-use net::*;
+mod reduce;
+mod word;
+pub use addr::*;
+pub use alloc::*;
+pub use delta::*;
+pub use kind::*;
+pub use link::*;
+pub use net::*;
+pub use reduce::*;
+pub use word::*;
 
 #[derive(Clone, Copy, Debug)]
 struct Nat;
