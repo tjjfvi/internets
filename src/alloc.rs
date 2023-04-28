@@ -5,8 +5,10 @@ const MIN_DLL_LEN: i32 = 12;
 impl Net {
   pub fn new(size: usize) -> Self {
     let mut buffer = vec![Word::NULL; size].into_boxed_slice();
-    buffer[0] = Word::null(Delta::of(buffer.len() as i32));
-    let alloc_addr = Addr(&buffer[0] as *const Word as *mut Word);
+    safe! { assert!(size > 0) };
+    let origin = unsafe { buffer.get_unchecked_mut(0) };
+    *origin = Word::null(Delta::of(size as i32));
+    let alloc_addr = Addr(origin as *mut Word);
     Net {
       buffer,
       alloc: alloc_addr,
@@ -54,7 +56,7 @@ impl Net {
       }
       self.alloc = next;
       if self.alloc.0 == initial.0 {
-        panic!("OOM");
+        fail!(panic!("OOM"));
       }
     }
   }

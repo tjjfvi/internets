@@ -8,7 +8,7 @@ impl Net {
         let addr = self.origin() + word.as_port();
         (self.word(addr).as_kind(), addr)
       }
-      _ => unreachable!(),
+      _ => fail!(unreachable!()),
     }
   }
 

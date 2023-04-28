@@ -29,17 +29,20 @@ impl Debug for Net {
 }
 
 impl Net {
+  #[inline(always)]
   pub(super) fn buffer_bounds(&self) -> Range<usize> {
-    let start = (&self.buffer[0]) as *const Word as usize;
+    let start = unsafe { self.buffer.get_unchecked(0) } as *const Word as usize;
     let end = start + self.buffer.len() * WORD_SIZE;
     start..end
   }
 
   pub(super) fn assert_valid(&self, addr: Addr, width: usize) {
-    let Range { start, end } = self.buffer_bounds();
-    assert!(addr.0 as usize >= start);
-    assert!(addr.0 as usize + width <= end);
-    assert!(addr.0 as usize & 0b11 == 0);
+    safe! {
+      let Range { start, end } = self.buffer_bounds();
+      assert!(addr.0 as usize >= start);
+      assert!(addr.0 as usize + width <= end);
+      assert!(addr.0 as usize & 0b11 == 0);
+    }
   }
 
   pub(super) fn word(&self, addr: Addr) -> Word {
@@ -57,7 +60,7 @@ impl Net {
   }
 
   pub(super) fn origin(&self) -> Addr {
-    Addr(&self.buffer[0] as *const Word as *mut Word)
+    Addr(self.buffer_bounds().start as *mut Word)
   }
 }
 

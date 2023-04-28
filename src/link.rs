@@ -23,7 +23,7 @@ impl Net {
       (Kind(a), Port(b, Auxiliary)) => self.link_aux_nil(b, a),
       (Kind(a), Port(b, Principal)) => self.link_prn_nil(b, a),
       (Kind(a), Kind(b)) => self.link_nil_nil(a, b),
-      _ => unreachable!(),
+      _ => fail!(unreachable!()),
     }
   }
 
@@ -35,7 +35,7 @@ impl Net {
         match word.mode() {
           WordMode::Kind => LinkHalf::Kind(word.as_kind()),
           WordMode::Port(mode) => LinkHalf::Port(addr + word.as_port(), mode),
-          _ => unreachable!(),
+          _ => fail!(unreachable!()),
         }
       }
       x => x,

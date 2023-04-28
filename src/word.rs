@@ -39,9 +39,9 @@ impl Word {
       2 | 3 => WordMode::Port(match self.0 & 0b1 {
         0 => PortMode::Auxiliary,
         1 => PortMode::Principal,
-        _ => unreachable!(),
+        _ => fail!(unreachable!()),
       }),
-      _ => unreachable!(),
+      _ => fail!(unreachable!()),
     }
   }
 

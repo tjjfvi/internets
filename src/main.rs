@@ -3,9 +3,11 @@ mod alloc;
 mod delta;
 mod kind;
 mod link;
+mod macros;
 mod net;
 mod reduce;
 mod word;
+
 pub use addr::*;
 pub use alloc::*;
 pub use delta::*;
@@ -14,6 +16,8 @@ pub use link::*;
 pub use net::*;
 pub use reduce::*;
 pub use word::*;
+
+use std::time::Instant;
 
 #[derive(Clone, Copy, Debug)]
 struct Nat;
@@ -141,18 +145,30 @@ impl Interactions for Nat {
         );
         net.free(a_addr, Delta::of(2))
       }
-      _ => unimplemented!("{:?} {:?}", a_kind, b_kind),
+      _ => fail!(unimplemented!("{:?} {:?}", a_kind, b_kind)),
     }
   }
 }
 
 fn main() {
-  let mut net = Net::new(1 << 8);
+  let mut net = Net::new(1 << 28);
   let base = net.alloc(&[
     Word::port(Delta::of(3), PortMode::Auxiliary),
     Word::kind(Nat::MUL),
     Word::port(Delta::of(4), PortMode::Auxiliary),
     Word::port(Delta::of(-3), PortMode::Auxiliary),
+    Word::kind(Nat::CLONE),
+    Word::port(Delta::of(-4), PortMode::Principal),
+    Word::port(Delta::of(-4), PortMode::Auxiliary),
+    Word::kind(Nat::MUL),
+    Word::port(Delta::of(4), PortMode::Auxiliary),
+    Word::port(Delta::of(-5), PortMode::Principal),
+    Word::kind(Nat::CLONE),
+    Word::port(Delta::of(-4), PortMode::Principal),
+    Word::port(Delta::of(-4), PortMode::Auxiliary),
+    Word::kind(Nat::MUL),
+    Word::port(Delta::of(4), PortMode::Auxiliary),
+    Word::port(Delta::of(-5), PortMode::Principal),
     Word::kind(Nat::CLONE),
     Word::port(Delta::of(-4), PortMode::Principal),
     Word::port(Delta::of(-4), PortMode::Auxiliary),
@@ -168,13 +184,16 @@ fn main() {
     Word::kind(Nat::ZERO),
   ]);
   net.link(
-    LinkHalf::Port(base + Delta::of(10), PortMode::Principal),
-    LinkHalf::Port(base + Delta::of(13), PortMode::Principal),
+    LinkHalf::Port(base + Delta::of(22), PortMode::Principal),
+    LinkHalf::Port(base + Delta::of(25), PortMode::Principal),
   );
+  let start = Instant::now();
   let mut count = 0;
   while net.reduce(&Nat) {
     count += 1;
   }
-  dbg!(&net);
-  dbg!(count);
+  let elapsed = Instant::now() - start;
+  let speed = (count as f64) / (elapsed.as_nanos() as f64 / 1.0e3);
+  // dbg!(&net);
+  println!("{count} ops in {elapsed:?} ({speed:.2} op/µs)")
 }
