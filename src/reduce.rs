@@ -1,6 +1,6 @@
 use crate::*;
 
-impl Net {
+impl<B: BufferMut> Net<B> {
   fn resolve_active_half(&self, word: Word) -> (Kind, Addr) {
     match word.mode() {
       WordMode::Kind => (word.as_kind(), Addr::NULL),
@@ -34,5 +34,5 @@ impl Net {
 }
 
 pub trait Interactions {
-  fn reduce(&self, net: &mut Net, a: (Kind, Addr), b: (Kind, Addr));
+  fn reduce<B: BufferMut>(&self, net: &mut Net<B>, a: (Kind, Addr), b: (Kind, Addr));
 }

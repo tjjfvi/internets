@@ -1,5 +1,6 @@
 mod addr;
 mod alloc;
+mod buffer;
 mod delta;
 mod kind;
 mod link;
@@ -10,6 +11,7 @@ mod word;
 
 pub use addr::*;
 pub use alloc::*;
+pub use buffer::*;
 pub use delta::*;
 pub use kind::*;
 pub use link::*;
@@ -32,7 +34,12 @@ impl Nat {
 }
 
 impl Interactions for Nat {
-  fn reduce(&self, net: &mut Net, (a_kind, a_addr): (Kind, Addr), (b_kind, b_addr): (Kind, Addr)) {
+  fn reduce<B: BufferMut>(
+    &self,
+    net: &mut Net<B>,
+    (a_kind, a_addr): (Kind, Addr),
+    (b_kind, b_addr): (Kind, Addr),
+  ) {
     match (a_kind, b_kind) {
       (Nat::ERASE, Nat::ZERO) => {}
       (Nat::CLONE, Nat::ZERO) => {
@@ -151,7 +158,7 @@ impl Interactions for Nat {
 }
 
 fn main() {
-  let mut net = Net::new(1 << 28);
+  let mut net = Net::new(ArrayBuffer(vec![Word::NULL; 1 << 28].into_boxed_slice()));
   let base = net.alloc(&[
     Word::port(Delta::of(3), PortMode::Auxiliary),
     Word::kind(Nat::MUL),

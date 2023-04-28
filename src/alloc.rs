@@ -2,13 +2,11 @@ use crate::*;
 
 const MIN_DLL_LEN: i32 = 12;
 
-impl Net {
-  pub fn new(size: usize) -> Self {
-    let mut buffer = vec![Word::NULL; size].into_boxed_slice();
-    safe! { assert!(size > 0) };
-    let origin = unsafe { buffer.get_unchecked_mut(0) };
-    *origin = Word::null(Delta::of(size as i32));
-    let alloc_addr = Addr(origin as *mut Word);
+impl<B: BufferMut> Net<B> {
+  pub fn new(mut buffer: B) -> Self {
+    safe! { assert!(buffer.len().offset_bytes > 0) };
+    let alloc_addr = buffer.origin();
+    *buffer.word_mut(alloc_addr) = Word::null(buffer.len());
     Net {
       buffer,
       alloc: alloc_addr,
@@ -90,7 +88,7 @@ impl Net {
   }
 
   fn dll_try_read(&mut self, addr: Addr) -> Option<(Delta, Option<(Addr, Addr)>)> {
-    if (addr.0 as usize) >= self.buffer_bounds().end {
+    if (addr.0 as usize) >= self.buffer_bounds().end.0 as usize {
       return None;
     }
     let word = self.word(addr);

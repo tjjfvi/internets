@@ -6,7 +6,7 @@ pub enum LinkHalf {
   Port(Addr, PortMode),
 }
 
-impl Net {
+impl<B: BufferMut> Net<B> {
   #[inline(always)]
   pub fn link(&mut self, a: LinkHalf, b: LinkHalf) {
     let a = self.get_link_half(a);

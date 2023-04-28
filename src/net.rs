@@ -1,66 +1,27 @@
 use crate::*;
-use std::{fmt::Debug, ops::Range};
+use std::{
+  fmt::Debug,
+  ops::{Deref, DerefMut},
+};
 
-pub struct Net {
-  pub(super) buffer: Box<[Word]>,
+#[derive(Debug)]
+pub struct Net<B: BufferMut> {
+  pub(super) buffer: B,
   pub(super) alloc: Addr,
   pub(super) active: Vec<ActivePair>,
 }
 
-impl Debug for Net {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let mut st = f.debug_struct("Net");
-    st.field("buffer", &DebugBuffer(&*self.buffer));
-    st.field("alloc", &(self.alloc - self.origin()));
-    st.field("active", &self.active);
-    return st.finish();
+impl<B: BufferMut> Deref for Net<B> {
+  type Target = B;
 
-    struct DebugBuffer<'a>(&'a [Word]);
-    impl<'a> Debug for DebugBuffer<'a> {
-      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut st = f.debug_map();
-        for (i, val) in self.0.iter().enumerate() {
-          st.entry(&i, val);
-        }
-        st.finish()
-      }
-    }
+  fn deref(&self) -> &Self::Target {
+    &self.buffer
   }
 }
 
-impl Net {
-  #[inline(always)]
-  pub(super) fn buffer_bounds(&self) -> Range<usize> {
-    let start = unsafe { self.buffer.get_unchecked(0) } as *const Word as usize;
-    let end = start + self.buffer.len() * WORD_SIZE;
-    start..end
-  }
-
-  pub(super) fn assert_valid(&self, addr: Addr, width: usize) {
-    safe! {
-      let Range { start, end } = self.buffer_bounds();
-      assert!(addr.0 as usize >= start);
-      assert!(addr.0 as usize + width <= end);
-      assert!(addr.0 as usize & 0b11 == 0);
-    }
-  }
-
-  pub(super) fn word(&self, addr: Addr) -> Word {
-    self.assert_valid(addr, WORD_SIZE);
-    unsafe { *addr.0 }
-  }
-
-  pub(super) fn word_mut(&mut self, addr: Addr) -> &mut Word {
-    self.assert_valid(addr, WORD_SIZE);
-    unsafe { &mut *addr.0 }
-  }
-
-  pub(super) fn slice_mut(&mut self, addr: Addr, len: Delta) -> &mut [Word] {
-    unsafe { std::slice::from_raw_parts_mut(addr.0, len.offset_bytes as usize / 4) }
-  }
-
-  pub(super) fn origin(&self) -> Addr {
-    Addr(self.buffer_bounds().start as *mut Word)
+impl<B: BufferMut> DerefMut for Net<B> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.buffer
   }
 }
 
