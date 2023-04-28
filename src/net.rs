@@ -52,6 +52,10 @@ impl Net {
     unsafe { &mut *addr.0 }
   }
 
+  pub(super) fn slice_mut(&mut self, addr: Addr, len: Delta) -> &mut [Word] {
+    unsafe { std::slice::from_raw_parts_mut(addr.0, len.offset_bytes as usize / 4) }
+  }
+
   pub(super) fn origin(&self) -> Addr {
     Addr(&self.buffer[0] as *const Word as *mut Word)
   }

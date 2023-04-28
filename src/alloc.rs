@@ -1,5 +1,7 @@
 use crate::*;
 
+const MIN_DLL_LEN: i32 = 12;
+
 impl Net {
   pub fn new(size: usize) -> Self {
     let mut buffer = vec![Word::NULL; size].into_boxed_slice();
@@ -18,32 +20,36 @@ impl Net {
     loop {
       let addr = self.alloc;
       let mut free_len = self.word(addr).as_null();
-      while let Some((len_inc, prev_next)) = self.try_read_dll(addr + free_len) {
+      debug_assert!(free_len.offset_bytes > 0);
+      while let Some((len_inc, prev_next)) = self.dll_try_read(addr + free_len) {
         if prev_next.is_some() {
           break;
         }
         free_len = free_len + len_inc;
         if let Some((prev, next)) = prev_next {
-          self.link_dll(prev, next);
+          self.dll_link(prev, next);
         }
       }
-      let (_, prev_next) = self.read_dll(addr).unwrap();
-      let (prev, next) = prev_next.unwrap();
+      let (prev, next) = self.dll_read_prev_next(addr);
       if free_len.offset_bytes >= len.offset_bytes {
         let remaining_len = free_len - len;
-        if remaining_len.offset_bytes >= 12 {
-          let new_addr = addr + len;
+        let new_addr = addr + len;
+        if remaining_len.offset_bytes > 0 {
+          *self.word_mut(new_addr) = Word::null(remaining_len);
+        }
+        if remaining_len.offset_bytes >= MIN_DLL_LEN {
           if prev.0 == addr.0 {
-            self.insert_dll(new_addr, remaining_len, new_addr, new_addr);
+            self.dll_link(new_addr, new_addr);
           } else {
-            self.insert_dll(new_addr, remaining_len, prev, next);
+            self.dll_link(prev, new_addr);
+            self.dll_link(new_addr, next);
           }
+          self.alloc = new_addr;
         } else {
-          self.link_dll(prev, next);
+          self.dll_link(prev, next);
           self.alloc = next;
         }
-        unsafe { std::slice::from_raw_parts_mut(addr.0, len.offset_bytes as usize / 4) }
-          .copy_from_slice(data);
+        self.slice_mut(addr, len).copy_from_slice(data);
         return addr;
       }
       self.alloc = next;
@@ -53,54 +59,51 @@ impl Net {
     }
   }
 
-  fn link_dll(&mut self, a: Addr, b: Addr) {
-    *self.word_mut(a + Delta::of(2)) = Word::null(b - a);
-    *self.word_mut(b + Delta::of(1)) = Word::null(a - b);
-  }
-
-  fn insert_dll(&mut self, addr: Addr, len: Delta, prev: Addr, next: Addr) {
+  pub fn free(&mut self, addr: Addr, len: Delta) {
+    assert!(len.offset_bytes >= 4);
+    self.assert_valid(addr, len.offset_bytes as usize);
+    if cfg!(debug_assertions) {
+      self.slice_mut(addr, len).fill(Word::NULL);
+    }
+    let next = self.alloc;
+    let prev = next + self.word(next + Delta::of(1)).as_null();
     *self.word_mut(addr) = Word::null(len);
-    if len.offset_bytes >= 12 {
-      self.link_dll(prev, addr);
-      self.link_dll(addr, next);
+    if len.offset_bytes >= MIN_DLL_LEN {
+      self.dll_link(prev, addr);
+      self.dll_link(addr, next);
       self.alloc = addr;
     }
   }
 
-  fn read_dll(&mut self, addr: Addr) -> Option<(Delta, Option<(Addr, Addr)>)> {
+  fn dll_link(&mut self, a: Addr, b: Addr) {
+    *self.word_mut(a + Delta::of(2)) = Word::null(b - a);
+    *self.word_mut(b + Delta::of(1)) = Word::null(a - b);
+  }
+
+  fn dll_read_prev_next(&mut self, addr: Addr) -> (Addr, Addr) {
+    (
+      addr + self.word(addr + Delta::of(1)).as_null(),
+      addr + self.word(addr + Delta::of(2)).as_null(),
+    )
+  }
+
+  fn dll_try_read(&mut self, addr: Addr) -> Option<(Delta, Option<(Addr, Addr)>)> {
+    if (addr.0 as usize) >= self.buffer_bounds().end {
+      return None;
+    }
     let word = self.word(addr);
     if word.mode() != WordMode::Null {
       return None;
     }
     let len = word.as_null();
+    debug_assert!(len.offset_bytes > 0);
     Some((
       len,
       if len.offset_bytes >= 12 {
-        Some((
-          addr + self.word(addr + Delta::of(1)).as_null(),
-          addr + self.word(addr + Delta::of(2)).as_null(),
-        ))
+        Some(self.dll_read_prev_next(addr))
       } else {
         None
       },
     ))
-  }
-
-  fn try_read_dll(&mut self, addr: Addr) -> Option<(Delta, Option<(Addr, Addr)>)> {
-    if (addr.0 as usize) < self.buffer_bounds().end {
-      self.read_dll(addr)
-    } else {
-      None
-    }
-  }
-
-  pub fn free(&mut self, addr: Addr, len: Delta) {
-    assert!(len.offset_bytes >= 4);
-    self.assert_valid(addr, len.offset_bytes as usize);
-    unsafe { std::slice::from_raw_parts_mut(addr.0, len.offset_bytes as usize / 4) }
-      .fill(Word::NULL);
-    let next = self.alloc;
-    let prev = next + self.word(next + Delta::of(1)).as_null();
-    self.insert_dll(addr, len, prev, next);
   }
 }
