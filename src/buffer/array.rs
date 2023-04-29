@@ -23,6 +23,7 @@ impl Buffer for ArrayBuffer {
     Addr(start)..Addr(end)
   }
 
+  #[inline(always)]
   fn assert_valid(&self, addr: Addr, length: Length) {
     safe! {
       let Range { start, end } = self.buffer_bounds();
@@ -32,26 +33,31 @@ impl Buffer for ArrayBuffer {
     }
   }
 
+  #[inline(always)]
   fn word(&self, addr: Addr) -> Word {
     self.assert_valid(addr, Length::of(1));
     unsafe { *addr.0 }
   }
 
+  #[inline(always)]
   fn origin(&self) -> Addr {
     self.buffer_bounds().start
   }
 
+  #[inline(always)]
   fn len(&self) -> Length {
     Length::of(self.array.len() as u32)
   }
 }
 
 impl BufferMut for ArrayBuffer {
+  #[inline(always)]
   fn word_mut(&mut self, addr: Addr) -> &mut Word {
     self.assert_valid(addr, Length::of(1));
     unsafe { &mut *addr.0 }
   }
 
+  #[inline(always)]
   fn slice_mut(&mut self, addr: Addr, len: Length) -> &mut [Word] {
     unsafe { std::slice::from_raw_parts_mut(addr.0, len.length_words() as usize) }
   }

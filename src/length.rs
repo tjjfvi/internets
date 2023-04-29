@@ -15,9 +15,11 @@ impl Length {
       length_bytes: delta << 2,
     }
   }
+  #[inline(always)]
   pub fn length_words(&self) -> u32 {
     self.length_bytes >> 2
   }
+  #[inline(always)]
   pub fn non_zero(&self) -> bool {
     self.length_bytes != 0
   }

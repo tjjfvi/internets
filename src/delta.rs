@@ -12,6 +12,7 @@ impl Delta {
       offset_bytes: delta << 2,
     }
   }
+  #[inline(always)]
   pub const fn offset_words(&self) -> i32 {
     self.offset_bytes >> 2
   }

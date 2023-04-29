@@ -9,12 +9,14 @@ pub struct RingAlloc<B: BufferMut> {
 
 impl<B: BufferMut> DelegateBuffer for RingAlloc<B> {
   type Buffer = B;
+  #[inline(always)]
   fn delegatee_buffer(&self) -> &Self::Buffer {
     &self.buffer
   }
 }
 
 impl<B: BufferMut> DelegateBufferMut for RingAlloc<B> {
+  #[inline(always)]
   fn delegatee_buffer_mut(&mut self) -> &mut Self::Buffer {
     &mut self.buffer
   }

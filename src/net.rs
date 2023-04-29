@@ -1,5 +1,5 @@
 use crate::*;
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Instant};
 
 #[derive(Debug)]
 pub struct Net<M: Alloc> {
@@ -15,9 +15,11 @@ pub enum LinkHalf {
 
 impl<M: Alloc> DelegateAlloc for Net<M> {
   type Alloc = M;
+  #[inline(always)]
   fn delegatee_alloc(&self) -> &Self::Alloc {
     &self.mem
   }
+  #[inline(always)]
   fn delegatee_alloc_mut(&mut self) -> &mut Self::Alloc {
     &mut self.mem
   }
@@ -97,6 +99,7 @@ impl<M: Alloc> Net<M> {
     // they just annihilate
   }
 
+  #[inline(always)]
   pub fn reduce(&mut self, interactions: &impl Interactions) -> bool {
     if let Some(pair) = self.active.pop() {
       let (a, b) = self.resolve_active_pair(pair);
@@ -107,6 +110,7 @@ impl<M: Alloc> Net<M> {
     }
   }
 
+  #[inline(always)]
   fn resolve_active_half(&self, word: Word) -> (Kind, Addr) {
     match word.mode() {
       WordMode::Kind => (word.as_kind(), Addr::NULL),
@@ -118,6 +122,7 @@ impl<M: Alloc> Net<M> {
     }
   }
 
+  #[inline(always)]
   fn resolve_active_pair(&self, pair: ActivePair) -> ((Kind, Addr), (Kind, Addr)) {
     let a = self.resolve_active_half(pair.0);
     let b = self.resolve_active_half(pair.1);
@@ -134,4 +139,16 @@ pub(super) struct ActivePair(pub(super) Word, pub(super) Word);
 
 pub trait Interactions {
   fn reduce<M: Alloc>(&self, net: &mut Net<M>, a: (Kind, Addr), b: (Kind, Addr));
+}
+
+#[inline(always)]
+pub fn reduce_with_stats<M: Alloc, I: Interactions>(net: &mut Net<M>, interactions: &I) {
+  let start = Instant::now();
+  let mut count = 0;
+  while net.reduce(interactions) {
+    count += 1;
+  }
+  let elapsed = Instant::now() - start;
+  let speed = (count as f64) / (elapsed.as_nanos() as f64 / 1.0e3);
+  println!("{count} ops in {elapsed:?} ({speed:.2} op/µs)");
 }

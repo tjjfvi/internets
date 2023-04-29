@@ -7,18 +7,21 @@ pub struct BumpAlloc<B: BufferMut> {
 
 impl<B: BufferMut> DelegateBuffer for BumpAlloc<B> {
   type Buffer = B;
+  #[inline(always)]
   fn delegatee_buffer(&self) -> &Self::Buffer {
     &self.buffer
   }
 }
 
 impl<B: BufferMut> DelegateBufferMut for BumpAlloc<B> {
+  #[inline(always)]
   fn delegatee_buffer_mut(&mut self) -> &mut Self::Buffer {
     &mut self.buffer
   }
 }
 
 impl<B: BufferMut> Alloc for BumpAlloc<B> {
+  #[inline(always)]
   fn alloc(&mut self, data: &[Word]) -> Addr {
     let len = Length::of(data.len() as u32);
     let addr = self.alloc;
@@ -27,6 +30,7 @@ impl<B: BufferMut> Alloc for BumpAlloc<B> {
     addr
   }
 
+  #[inline(always)]
   fn free(&mut self, _: Addr, _: Length) {}
 }
 

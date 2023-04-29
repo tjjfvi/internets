@@ -1,26 +1,7 @@
-mod addr;
-mod alloc;
-mod buffer;
-mod delta;
-mod kind;
-mod length;
-mod macros;
-mod net;
-mod word;
-
-pub use addr::*;
-pub use alloc::*;
-pub use buffer::*;
-pub use delta::*;
-pub use kind::*;
-pub use length::*;
-pub use net::*;
-pub use word::*;
-
-use std::time::Instant;
+use internets::*;
 
 #[derive(Clone, Copy, Debug)]
-struct Nat;
+pub struct Nat;
 
 impl Nat {
   pub const ERASE: Kind = Kind::of(0);
@@ -32,6 +13,7 @@ impl Nat {
 }
 
 impl Interactions for Nat {
+  #[inline(always)]
   fn reduce<M: Alloc>(
     &self,
     net: &mut Net<M>,
@@ -192,13 +174,5 @@ fn main() {
     LinkHalf::Port(base + Delta::of(22), PortMode::Principal),
     LinkHalf::Port(base + Delta::of(25), PortMode::Principal),
   );
-  let start = Instant::now();
-  let mut count = 0;
-  while net.reduce(&Nat) {
-    count += 1;
-  }
-  let elapsed = Instant::now() - start;
-  let speed = (count as f64) / (elapsed.as_nanos() as f64 / 1.0e3);
-  // dbg!(&net);
-  println!("{count} ops in {elapsed:?} ({speed:.2} op/µs)")
+  reduce_with_stats(&mut net, &Nat);
 }
