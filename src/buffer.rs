@@ -1,9 +1,8 @@
-use std::{
-  fmt::Debug,
-  ops::{Deref, DerefMut, Range},
-};
+mod array;
+pub use array::*;
 
 use crate::*;
+use std::ops::Range;
 
 pub trait Buffer {
   fn buffer_bounds(&self) -> Range<Addr>;
@@ -21,90 +20,45 @@ pub trait BufferMut: Buffer {
   fn slice_mut(&mut self, addr: Addr, len: Delta) -> &mut [Word];
 }
 
-pub struct ArrayBuffer(pub Box<[Word]>);
-
-impl Debug for ArrayBuffer {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let mut st = f.debug_map();
-    for (i, val) in self.0.iter().enumerate() {
-      st.entry(&i, val);
-    }
-    st.finish()
-  }
+pub trait DelegateBuffer {
+  type Buffer: Buffer;
+  fn delegatee_buffer(&self) -> &Self::Buffer;
 }
 
-impl Buffer for ArrayBuffer {
-  #[inline(always)]
+pub trait DelegateBufferMut: DelegateBuffer
+where
+  Self::Buffer: BufferMut,
+{
+  fn delegatee_buffer_mut(&mut self) -> &mut Self::Buffer;
+}
+
+impl<T: DelegateBuffer> Buffer for T {
   fn buffer_bounds(&self) -> Range<Addr> {
-    let start = unsafe { self.0.get_unchecked(0) } as *const Word as *mut Word;
-    let end = unsafe { start.offset(self.0.len() as isize) };
-    Addr(start)..Addr(end)
+    self.delegatee_buffer().buffer_bounds()
   }
-
   fn assert_valid(&self, addr: Addr, width: usize) {
-    safe! {
-      let Range { start, end } = self.buffer_bounds();
-      assert!(addr.0 as usize >= start.0 as usize);
-      assert!(addr.0 as usize + width <= end.0 as usize);
-      assert!(addr.0 as usize & 0b11 == 0);
-    }
+    self.delegatee_buffer().assert_valid(addr, width)
   }
-
   fn word(&self, addr: Addr) -> Word {
-    self.assert_valid(addr, WORD_SIZE);
-    unsafe { *addr.0 }
+    self.delegatee_buffer().word(addr)
   }
-
   fn origin(&self) -> Addr {
-    self.buffer_bounds().start
+    self.delegatee_buffer().origin()
   }
-
   fn len(&self) -> Delta {
-    Delta::of(self.0.len() as i32)
+    self.delegatee_buffer().len()
   }
 }
 
-impl BufferMut for ArrayBuffer {
+impl<T: DelegateBuffer + DelegateBufferMut> BufferMut for T
+where
+  T::Buffer: BufferMut,
+{
   fn word_mut(&mut self, addr: Addr) -> &mut Word {
-    self.assert_valid(addr, WORD_SIZE);
-    unsafe { &mut *addr.0 }
+    self.delegatee_buffer_mut().word_mut(addr)
   }
 
   fn slice_mut(&mut self, addr: Addr, len: Delta) -> &mut [Word] {
-    unsafe { std::slice::from_raw_parts_mut(addr.0, len.offset_bytes as usize / 4) }
-  }
-}
-
-impl<'a, T: Deref> Buffer for T
-where
-  <T as Deref>::Target: Buffer,
-{
-  fn buffer_bounds(&self) -> Range<Addr> {
-    (&**self).buffer_bounds()
-  }
-  fn assert_valid(&self, addr: Addr, width: usize) {
-    (&**self).assert_valid(addr, width)
-  }
-  fn word(&self, addr: Addr) -> Word {
-    (&**self).word(addr)
-  }
-  fn origin(&self) -> Addr {
-    (&**self).origin()
-  }
-  fn len(&self) -> Delta {
-    (&**self).len()
-  }
-}
-
-impl<'a, T: DerefMut> BufferMut for T
-where
-  <T as Deref>::Target: BufferMut,
-{
-  fn word_mut(&mut self, addr: Addr) -> &mut Word {
-    (&mut **self).word_mut(addr)
-  }
-
-  fn slice_mut(&mut self, addr: Addr, len: Delta) -> &mut [Word] {
-    (&mut **self).slice_mut(addr, len)
+    self.delegatee_buffer_mut().slice_mut(addr, len)
   }
 }

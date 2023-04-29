@@ -3,10 +3,8 @@ mod alloc;
 mod buffer;
 mod delta;
 mod kind;
-mod link;
 mod macros;
 mod net;
-mod reduce;
 mod word;
 
 pub use addr::*;
@@ -14,9 +12,7 @@ pub use alloc::*;
 pub use buffer::*;
 pub use delta::*;
 pub use kind::*;
-pub use link::*;
 pub use net::*;
-pub use reduce::*;
 pub use word::*;
 
 use std::time::Instant;
@@ -34,9 +30,9 @@ impl Nat {
 }
 
 impl Interactions for Nat {
-  fn reduce<B: BufferMut>(
+  fn reduce<M: Alloc>(
     &self,
-    net: &mut Net<B>,
+    net: &mut Net<M>,
     (a_kind, a_addr): (Kind, Addr),
     (b_kind, b_addr): (Kind, Addr),
   ) {
@@ -158,7 +154,7 @@ impl Interactions for Nat {
 }
 
 fn main() {
-  let mut net = Net::new(ArrayBuffer(vec![Word::NULL; 1 << 28].into_boxed_slice()));
+  let mut net = Net::new(RingAlloc::new(ArrayBuffer::new(1 << 28)));
   let base = net.alloc(&[
     Word::port(Delta::of(3), PortMode::Auxiliary),
     Word::kind(Nat::MUL),
