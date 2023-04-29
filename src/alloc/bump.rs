@@ -1,5 +1,6 @@
 use crate::*;
 
+#[derive(Debug)]
 pub struct BumpAlloc<B: BufferMut> {
   buffer: B,
   alloc: Addr,
@@ -31,7 +32,11 @@ impl<B: BufferMut> Alloc for BumpAlloc<B> {
   }
 
   #[inline(always)]
-  fn free(&mut self, _: Addr, _: Length) {}
+  fn free(&mut self, addr: Addr, len: Length) {
+    if cfg!(debug_assertions) {
+      self.slice_mut(addr, len).fill(Word::NULL)
+    }
+  }
 }
 
 impl<B: BufferMut> BumpAlloc<B> {

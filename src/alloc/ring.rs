@@ -2,6 +2,7 @@ use crate::*;
 
 const MIN_DLL_LEN: Length = Length::of(3);
 
+#[derive(Debug)]
 pub struct RingAlloc<B: BufferMut> {
   buffer: B,
   alloc: Addr,

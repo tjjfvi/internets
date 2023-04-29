@@ -1,17 +1,19 @@
 mod bump;
 mod ring;
 
+use std::fmt::Debug;
+
 pub use bump::*;
 pub use ring::*;
 
 use crate::*;
 
-pub trait Alloc: BufferMut {
+pub trait Alloc: BufferMut + Debug {
   fn alloc(&mut self, data: &[Word]) -> Addr;
   fn free(&mut self, addr: Addr, len: Length);
 }
 
-pub trait DelegateAlloc {
+pub trait DelegateAlloc: Debug {
   type Alloc: Alloc;
   fn delegatee_alloc(&self) -> &Self::Alloc;
   fn delegatee_alloc_mut(&mut self) -> &mut Self::Alloc;

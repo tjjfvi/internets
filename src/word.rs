@@ -2,14 +2,25 @@ use crate::*;
 use std::{fmt::Debug, mem::size_of};
 
 #[derive(Clone, Copy)]
-pub struct Word(u32);
+pub struct Word(pub u32);
 
 impl Debug for Word {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self.mode() {
-      WordMode::Null => write!(f, "Null({:?})", self.as_null_delta().offset_words()),
-      WordMode::Kind => write!(f, "Kind({:?})", self.as_kind().id),
-      WordMode::Port(mode) => write!(f, "Port({:?}, {:?})", self.as_port().offset_words(), mode),
+      WordMode::Null => write!(
+        f,
+        "{:08x} = Null({:?})",
+        self.0,
+        self.as_null_delta().offset_words()
+      ),
+      WordMode::Kind => write!(f, "{:08x} = Kind({:?})", self.0, self.as_kind().id),
+      WordMode::Port(mode) => write!(
+        f,
+        "{:08x} = Port({:?}, {:?})",
+        self.0,
+        self.as_port().offset_words(),
+        mode
+      ),
     }
   }
 }
@@ -62,7 +73,7 @@ impl Word {
   }
 
   #[inline(always)]
-  pub(super) const fn as_port(self) -> Delta {
+  pub const fn as_port(self) -> Delta {
     debug_assert!(matches!(self.mode(), WordMode::Port(_)));
     Delta {
       offset_bytes: (self.0 & !0b11) as i32,
@@ -70,7 +81,7 @@ impl Word {
   }
 
   #[inline(always)]
-  pub(super) const fn as_kind(self) -> Kind {
+  pub const fn as_kind(self) -> Kind {
     debug_assert!(matches!(self.mode(), WordMode::Kind));
     Kind {
       id: (self.0 >> 2) as u32,

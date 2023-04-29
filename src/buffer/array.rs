@@ -1,5 +1,9 @@
 use crate::*;
-use std::{fmt::Debug, ops::Range};
+use std::{
+  fmt::Debug,
+  ops::Range,
+  ptr::{read_unaligned, write_unaligned},
+};
 
 pub struct ArrayBuffer {
   array: Box<[Word]>,
@@ -40,6 +44,12 @@ impl Buffer for ArrayBuffer {
   }
 
   #[inline(always)]
+  fn read_u64(&self, addr: Addr) -> u64 {
+    self.assert_valid(addr, Length::of(2));
+    unsafe { read_unaligned(addr.0 as *mut u64) }
+  }
+
+  #[inline(always)]
   fn origin(&self) -> Addr {
     self.buffer_bounds().start
   }
@@ -55,6 +65,12 @@ impl BufferMut for ArrayBuffer {
   fn word_mut(&mut self, addr: Addr) -> &mut Word {
     self.assert_valid(addr, Length::of(1));
     unsafe { &mut *addr.0 }
+  }
+
+  #[inline(always)]
+  fn write_u64(&mut self, addr: Addr, value: u64) {
+    self.assert_valid(addr, Length::of(2));
+    unsafe { write_unaligned(addr.0 as *mut u64, value) }
   }
 
   #[inline(always)]
