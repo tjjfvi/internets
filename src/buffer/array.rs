@@ -23,17 +23,17 @@ impl Buffer for ArrayBuffer {
     Addr(start)..Addr(end)
   }
 
-  fn assert_valid(&self, addr: Addr, width: usize) {
+  fn assert_valid(&self, addr: Addr, length: Length) {
     safe! {
       let Range { start, end } = self.buffer_bounds();
       assert!(addr.0 as usize >= start.0 as usize);
-      assert!(addr.0 as usize + width <= end.0 as usize);
+      assert!(addr.0 as usize + length.length_bytes as usize <= end.0 as usize);
       assert!(addr.0 as usize & 0b11 == 0);
     }
   }
 
   fn word(&self, addr: Addr) -> Word {
-    self.assert_valid(addr, WORD_SIZE);
+    self.assert_valid(addr, Length::of(1));
     unsafe { *addr.0 }
   }
 
@@ -41,19 +41,19 @@ impl Buffer for ArrayBuffer {
     self.buffer_bounds().start
   }
 
-  fn len(&self) -> Delta {
-    Delta::of(self.array.len() as i32)
+  fn len(&self) -> Length {
+    Length::of(self.array.len() as u32)
   }
 }
 
 impl BufferMut for ArrayBuffer {
   fn word_mut(&mut self, addr: Addr) -> &mut Word {
-    self.assert_valid(addr, WORD_SIZE);
+    self.assert_valid(addr, Length::of(1));
     unsafe { &mut *addr.0 }
   }
 
-  fn slice_mut(&mut self, addr: Addr, len: Delta) -> &mut [Word] {
-    unsafe { std::slice::from_raw_parts_mut(addr.0, len.offset_bytes as usize / 4) }
+  fn slice_mut(&mut self, addr: Addr, len: Length) -> &mut [Word] {
+    unsafe { std::slice::from_raw_parts_mut(addr.0, len.length_words() as usize) }
   }
 }
 

@@ -6,18 +6,18 @@ use std::ops::Range;
 
 pub trait Buffer {
   fn buffer_bounds(&self) -> Range<Addr>;
-  fn assert_valid(&self, addr: Addr, width: usize);
+  fn assert_valid(&self, addr: Addr, len: Length);
 
   fn word(&self, addr: Addr) -> Word;
 
   fn origin(&self) -> Addr;
-  fn len(&self) -> Delta;
+  fn len(&self) -> Length;
 }
 
 pub trait BufferMut: Buffer {
   fn word_mut(&mut self, addr: Addr) -> &mut Word;
 
-  fn slice_mut(&mut self, addr: Addr, len: Delta) -> &mut [Word];
+  fn slice_mut(&mut self, addr: Addr, len: Length) -> &mut [Word];
 }
 
 pub trait DelegateBuffer {
@@ -36,8 +36,8 @@ impl<T: DelegateBuffer> Buffer for T {
   fn buffer_bounds(&self) -> Range<Addr> {
     self.delegatee_buffer().buffer_bounds()
   }
-  fn assert_valid(&self, addr: Addr, width: usize) {
-    self.delegatee_buffer().assert_valid(addr, width)
+  fn assert_valid(&self, addr: Addr, len: Length) {
+    self.delegatee_buffer().assert_valid(addr, len)
   }
   fn word(&self, addr: Addr) -> Word {
     self.delegatee_buffer().word(addr)
@@ -45,7 +45,7 @@ impl<T: DelegateBuffer> Buffer for T {
   fn origin(&self) -> Addr {
     self.delegatee_buffer().origin()
   }
-  fn len(&self) -> Delta {
+  fn len(&self) -> Length {
     self.delegatee_buffer().len()
   }
 }
@@ -58,7 +58,7 @@ where
     self.delegatee_buffer_mut().word_mut(addr)
   }
 
-  fn slice_mut(&mut self, addr: Addr, len: Delta) -> &mut [Word] {
+  fn slice_mut(&mut self, addr: Addr, len: Length) -> &mut [Word] {
     self.delegatee_buffer_mut().slice_mut(addr, len)
   }
 }

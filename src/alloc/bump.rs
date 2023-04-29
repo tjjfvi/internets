@@ -20,14 +20,14 @@ impl<B: BufferMut> DelegateBufferMut for BumpAlloc<B> {
 
 impl<B: BufferMut> Alloc for BumpAlloc<B> {
   fn alloc(&mut self, data: &[Word]) -> Addr {
-    let len = Delta::of(data.len() as i32);
+    let len = Length::of(data.len() as u32);
     let addr = self.alloc;
     self.alloc = addr + len;
     self.slice_mut(addr, len).copy_from_slice(data);
     addr
   }
 
-  fn free(&mut self, _: Addr, _: Delta) {}
+  fn free(&mut self, _: Addr, _: Length) {}
 }
 
 impl<B: BufferMut> BumpAlloc<B> {

@@ -3,6 +3,7 @@ mod alloc;
 mod buffer;
 mod delta;
 mod kind;
+mod length;
 mod macros;
 mod net;
 mod word;
@@ -12,6 +13,7 @@ pub use alloc::*;
 pub use buffer::*;
 pub use delta::*;
 pub use kind::*;
+pub use length::*;
 pub use net::*;
 pub use word::*;
 
@@ -47,14 +49,14 @@ impl Interactions for Nat {
           LinkHalf::From(a_addr + Delta::of(2)),
           LinkHalf::Kind(Nat::ZERO),
         );
-        net.free(a_addr, Delta::of(3));
+        net.free(a_addr, Length::of(3));
       }
       (Nat::ERASE, Nat::SUCC) => {
         net.link(
           LinkHalf::From(b_addr + Delta::of(1)),
           LinkHalf::Kind(Nat::ERASE),
         );
-        net.free(b_addr, Delta::of(2));
+        net.free(b_addr, Length::of(2));
       }
       (Nat::CLONE, Nat::SUCC) => {
         const CHUNK: &'static [Word] = &[
@@ -79,15 +81,15 @@ impl Interactions for Nat {
           LinkHalf::From(a_addr + Delta::of(2)),
           LinkHalf::Port(chunk + Delta::of(2), PortMode::Principal),
         );
-        net.free(a_addr, Delta::of(3));
-        net.free(b_addr, Delta::of(2));
+        net.free(a_addr, Length::of(3));
+        net.free(b_addr, Length::of(2));
       }
       (Nat::ZERO, Nat::ADD) => {
         net.link(
           LinkHalf::From(b_addr + Delta::of(1)),
           LinkHalf::From(b_addr + Delta::of(2)),
         );
-        net.free(b_addr, Delta::of(3));
+        net.free(b_addr, Length::of(3));
       }
       (Nat::SUCC, Nat::ADD) => {
         let a_pred = a_addr + Delta::of(1);
@@ -114,7 +116,7 @@ impl Interactions for Nat {
           LinkHalf::From(b_addr + Delta::of(2)),
           LinkHalf::Kind(Nat::ZERO),
         );
-        net.free(b_addr, Delta::of(3));
+        net.free(b_addr, Length::of(3));
       }
       (Nat::SUCC, Nat::MUL) => {
         const CHUNK: &'static [Word] = &[
@@ -146,7 +148,7 @@ impl Interactions for Nat {
           LinkHalf::From(a_addr + Delta::of(1)),
           LinkHalf::Port(b_addr, PortMode::Principal),
         );
-        net.free(a_addr, Delta::of(2))
+        net.free(a_addr, Length::of(2))
       }
       _ => fail!(unimplemented!("{:?} {:?}", a_kind, b_kind)),
     }

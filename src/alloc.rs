@@ -8,7 +8,7 @@ use crate::*;
 
 pub trait Alloc: BufferMut {
   fn alloc(&mut self, data: &[Word]) -> Addr;
-  fn free(&mut self, addr: Addr, len: Delta);
+  fn free(&mut self, addr: Addr, len: Length);
 }
 
 pub trait DelegateAlloc {
@@ -34,7 +34,7 @@ impl<T: DelegateAlloc> Alloc for T {
   fn alloc(&mut self, data: &[Word]) -> Addr {
     self.delegatee_alloc_mut().alloc(data)
   }
-  fn free(&mut self, addr: Addr, len: Delta) {
+  fn free(&mut self, addr: Addr, len: Length) {
     self.delegatee_alloc_mut().free(addr, len)
   }
 }

@@ -16,6 +16,14 @@ impl Add<Delta> for Addr {
   }
 }
 
+impl Add<Length> for Addr {
+  type Output = Addr;
+  #[inline(always)]
+  fn add(self, len: Length) -> Self::Output {
+    Addr(((self.0 as usize) + (len.length_bytes as usize)) as *mut Word)
+  }
+}
+
 impl Sub<Addr> for Addr {
   type Output = Delta;
   #[inline(always)]

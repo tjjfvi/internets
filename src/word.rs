@@ -7,9 +7,9 @@ pub struct Word(u32);
 impl Debug for Word {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self.mode() {
-      WordMode::Null => write!(f, "Null({:?})", self.as_null().offset_bytes / 4),
+      WordMode::Null => write!(f, "Null({:?})", self.as_null_delta().offset_words()),
       WordMode::Kind => write!(f, "Kind({:?})", self.as_kind().id),
-      WordMode::Port(mode) => write!(f, "Port({:?}, {:?})", self.as_port().offset_bytes / 4, mode),
+      WordMode::Port(mode) => write!(f, "Port({:?}, {:?})", self.as_port().offset_words(), mode),
     }
   }
 }
@@ -46,7 +46,15 @@ impl Word {
   }
 
   #[inline(always)]
-  pub(super) const fn as_null(self) -> Delta {
+  pub(super) const fn as_null_len(self) -> Length {
+    debug_assert!(matches!(self.mode(), WordMode::Null));
+    Length {
+      length_bytes: self.0,
+    }
+  }
+
+  #[inline(always)]
+  pub(super) const fn as_null_delta(self) -> Delta {
     debug_assert!(matches!(self.mode(), WordMode::Null));
     Delta {
       offset_bytes: self.0 as i32,
@@ -74,7 +82,12 @@ impl Word {
   pub const NULL: Word = Word(0);
 
   #[inline(always)]
-  pub(super) const fn null(delta: Delta) -> Self {
+  pub(super) const fn null_len(len: Length) -> Self {
+    Word(len.length_bytes)
+  }
+
+  #[inline(always)]
+  pub(super) const fn null_delta(delta: Delta) -> Self {
     Word(delta.offset_bytes as u32)
   }
 
