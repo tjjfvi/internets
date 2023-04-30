@@ -9,7 +9,7 @@ pub trait Buffer: Debug {
   fn assert_valid(&self, addr: Addr, len: Length);
 
   fn word(&self, addr: Addr) -> Word;
-  fn read_u64(&self, addr: Addr) -> u64;
+  fn read_payload<P>(&self, addr: Addr) -> P;
 
   fn origin(&self) -> Addr;
   fn len(&self) -> Length;
@@ -17,7 +17,7 @@ pub trait Buffer: Debug {
 
 pub trait BufferMut: Buffer {
   fn word_mut(&mut self, addr: Addr) -> &mut Word;
-  fn write_u64(&mut self, addr: Addr, value: u64);
+  fn write_payload<P>(&mut self, addr: Addr, payload: P);
   fn slice_mut(&mut self, addr: Addr, len: Length) -> &mut [Word];
 }
 
@@ -47,8 +47,8 @@ impl<T: DelegateBuffer> Buffer for T {
     self.delegatee_buffer().word(addr)
   }
   #[inline(always)]
-  fn read_u64(&self, addr: Addr) -> u64 {
-    self.delegatee_buffer().read_u64(addr)
+  fn read_payload<P>(&self, addr: Addr) -> P {
+    self.delegatee_buffer().read_payload(addr)
   }
   #[inline(always)]
   fn origin(&self) -> Addr {
@@ -69,8 +69,8 @@ where
     self.delegatee_buffer_mut().word_mut(addr)
   }
   #[inline(always)]
-  fn write_u64(&mut self, addr: Addr, value: u64) {
-    self.delegatee_buffer_mut().write_u64(addr, value)
+  fn write_payload<P>(&mut self, addr: Addr, value: P) {
+    self.delegatee_buffer_mut().write_payload(addr, value)
   }
   #[inline(always)]
   fn slice_mut(&mut self, addr: Addr, len: Length) -> &mut [Word] {

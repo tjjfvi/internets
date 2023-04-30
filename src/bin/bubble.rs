@@ -74,7 +74,10 @@ impl Interactions for Bubble {
       ($new_kind:expr) => {{
         const CHUNK: &'static [Word] = &[Word::kind($new_kind), Word::NULL, Word::NULL, Word::NULL];
         let chunk = net.alloc(CHUNK);
-        net.write_u64(chunk + Delta::of(1), net.read_u64(a_addr + Delta::of(1)));
+        net.write_payload(
+          chunk + Delta::of(1),
+          net.read_payload::<u64>(a_addr + Delta::of(1)),
+        );
         net.link(
           LinkHalf::From(b_addr + Delta::of(1)),
           LinkHalf::Port(chunk, PortMode::Principal),
@@ -91,7 +94,13 @@ impl Interactions for Bubble {
       ($op:expr) => {{
         let x_addr = a_addr + Delta::of(1);
         let y_addr = b_addr + Delta::of(1);
-        net.write_u64(x_addr, ($op)(net.read_u64(x_addr), net.read_u64(y_addr)));
+        net.write_payload(
+          x_addr,
+          ($op)(
+            net.read_payload::<u64>(x_addr),
+            net.read_payload::<u64>(y_addr),
+          ),
+        );
         net.link(
           LinkHalf::Port(a_addr, PortMode::Principal),
           LinkHalf::From(b_addr + Delta::of(3)),
@@ -103,7 +112,10 @@ impl Interactions for Bubble {
       ($cmp:expr) => {{
         let x_addr = a_addr + Delta::of(1);
         let y_addr = b_addr + Delta::of(1);
-        let kind = if ($cmp)(net.read_u64(x_addr), net.read_u64(y_addr)) {
+        let kind = if ($cmp)(
+          net.read_payload::<u64>(x_addr),
+          net.read_payload::<u64>(y_addr),
+        ) {
           Bubble::TRUE
         } else {
           Bubble::FALSE
@@ -127,7 +139,10 @@ impl Interactions for Bubble {
       (Bubble::U64, Bubble::CLONE) => {
         const CHUNK: &'static [Word] = &[Word::kind(Bubble::U64), Word::NULL, Word::NULL];
         let chunk = net.alloc(CHUNK);
-        net.write_u64(chunk + Delta::of(1), net.read_u64(a_addr + Delta::of(1)));
+        net.write_payload::<u64>(
+          chunk + Delta::of(1),
+          net.read_payload(a_addr + Delta::of(1)),
+        );
         net.link(
           LinkHalf::From(b_addr + Delta::of(1)),
           LinkHalf::Port(a_addr, PortMode::Principal),
@@ -280,7 +295,7 @@ impl Interactions for Bubble {
         net.free(b_addr, Length::of(5))
       }
       (Bubble::U64, Bubble::RND) => {
-        let value = net.read_u64(a_addr + Delta::of(1));
+        let value = net.read_payload::<u64>(a_addr + Delta::of(1));
         if value == 0 {
           net.link(
             LinkHalf::From(b_addr + Delta::of(1)),
@@ -397,5 +412,5 @@ fn main() {
     LinkHalf::Port(base + Delta::of(8), PortMode::Principal),
   );
   reduce_with_stats(&mut net, &Bubble);
-  dbg!(net.read_u64(net.origin() + net.word(net.origin()).as_port() + Delta::of(1)));
+  dbg!(net.read_payload::<u64>(net.origin() + net.word(net.origin()).as_port() + Delta::of(1)));
 }

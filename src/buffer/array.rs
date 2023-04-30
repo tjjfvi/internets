@@ -1,6 +1,7 @@
 use crate::*;
 use std::{
   fmt::Debug,
+  mem::size_of,
   ops::Range,
   ptr::{read_unaligned, write_unaligned},
 };
@@ -44,9 +45,9 @@ impl Buffer for ArrayBuffer {
   }
 
   #[inline(always)]
-  fn read_u64(&self, addr: Addr) -> u64 {
-    self.assert_valid(addr, Length::of(2));
-    unsafe { read_unaligned(addr.0 as *mut u64) }
+  fn read_payload<P>(&self, addr: Addr) -> P {
+    self.assert_valid(addr, Length::of(((size_of::<P>() + 1) >> 2) as u32));
+    unsafe { read_unaligned(addr.0 as *mut P) }
   }
 
   #[inline(always)]
@@ -68,9 +69,9 @@ impl BufferMut for ArrayBuffer {
   }
 
   #[inline(always)]
-  fn write_u64(&mut self, addr: Addr, value: u64) {
-    self.assert_valid(addr, Length::of(2));
-    unsafe { write_unaligned(addr.0 as *mut u64, value) }
+  fn write_payload<P>(&mut self, addr: Addr, value: P) {
+    self.assert_valid(addr, Length::of(((size_of::<P>() + 1) >> 2) as u32));
+    unsafe { write_unaligned(addr.0 as *mut P, value) }
   }
 
   #[inline(always)]
