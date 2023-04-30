@@ -1,7 +1,7 @@
-use internets_interactions_macro::interactions;
+use internets_nets::interactions;
 
 interactions! {
-  type Nat;
+  type NatNum;
 
   struct Zero(+Nat);
   struct Succ(+Nat, -Nat);
@@ -11,7 +11,7 @@ interactions! {
   struct Exp(-Nat, -Nat, +Nat);
 
   struct Erase(-Nat);
-  struct Clone(-Nat);
+  struct Clone(-Nat, +Nat, +Nat);
 
   fn foo(x, y) {
     Clone(x, y, z)
@@ -34,15 +34,9 @@ interactions! {
   }
 
   impl Add(_, x, x) for Zero(_) {}
-  impl Add(_, a, b) for Succ(_, c) {
-    Add(a, b, y)
-    Succ(c, y)
-  }
-
-  impl Add(_, x, x) for Zero(_) {}
-  impl Add(_, a, b) for Succ(_, c) {
-    Add(a, b, y)
-    Succ(c, y)
+  impl Add(_, y, o) for Succ(_, x) {
+    Add(x, y, o2)
+    Succ(o, o2)
   }
 
   impl Mul(_, x, o) for Zero(_) {
@@ -66,15 +60,28 @@ interactions! {
     Exp(y, x1, o1)
   }
 
-  fn main(n256) {
+  fn square(i, o) {
+    Clone(i, i0, i1)
+    Mul(i0, i1, o)
+  }
+
+  fn main(n65536) {
     Zero(n0)
     Succ(n1, n0)
-    Succ(n2, n0)
-    Clone(n2, n2_0, n2_1)
-    Mul(n2_0, n2_1, n4)
-    Clone(n4, n4_0, n4_1)
-    Mul(n4_0, n4_1, n16)
-    Clone(n16, n16_0, n16_1)
-    Mul(n16_0, n16_1, n256)
+    Succ(n2, n1)
+    square(n2, n4)
+    square(n4, n16)
+    square(n16, n256)
+    square(n256, n65536)
   }
+}
+
+fn main() {
+  use internets_nets::*;
+  let mut net = Net::new(RingAlloc::new(ArrayBuffer::new(1 << 28)));
+  let free = net.alloc(&[Word::NULL]);
+  let [free_0] = NatNum::main(&mut net);
+  net.link(free_0, LinkHalf::Port(free, PortMode::Auxiliary));
+  // dbg!(&net);
+  reduce_with_stats(&mut net, &NatNum);
 }

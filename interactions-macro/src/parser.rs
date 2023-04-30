@@ -1,13 +1,17 @@
-use syn::{braced, parenthesized, parse::Parse, Expr, Ident, Pat, Token, Type};
+use syn::{braced, parenthesized, parse::Parse, Expr, Ident, Pat, Path, Token, Type};
 
 #[derive(Debug)]
 pub struct Input {
+  pub crate_path: Path,
   pub ty: Ident,
   pub items: Vec<Item>,
 }
 
 impl Parse for Input {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    let _: Token![use] = input.parse()?;
+    let crate_path: Path = input.parse()?;
+    let _: Token![;] = input.parse()?;
     let _: Token![type] = input.parse()?;
     let ty: Ident = input.parse()?;
     let _: Token![;] = input.parse()?;
@@ -15,7 +19,11 @@ impl Parse for Input {
     while !input.is_empty() {
       items.push(input.parse()?);
     }
-    Ok(Input { ty, items })
+    Ok(Input {
+      crate_path,
+      ty,
+      items,
+    })
   }
 }
 
@@ -24,6 +32,27 @@ pub enum Item {
   Struct(Struct),
   Impl(Impl),
   Fn(Fn),
+}
+
+impl Item {
+  pub fn as_struct(&self) -> Option<&Struct> {
+    match self {
+      Item::Struct(x) => Some(x),
+      _ => None,
+    }
+  }
+  pub fn as_impl(&self) -> Option<&Impl> {
+    match self {
+      Item::Impl(x) => Some(x),
+      _ => None,
+    }
+  }
+  pub fn as_fn(&self) -> Option<&Fn> {
+    match self {
+      Item::Fn(x) => Some(x),
+      _ => None,
+    }
+  }
 }
 
 impl Parse for Item {
@@ -177,6 +206,17 @@ impl Parse for Impl {
     let right: ImplAgent = input.parse()?;
     let net: Net = input.parse()?;
     Ok(Impl { left, right, net })
+  }
+}
+
+impl Impl {
+  pub fn all_idents<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
+    self
+      .left
+      .aux
+      .iter()
+      .chain(self.right.aux.iter())
+      .chain(self.net.agents.iter().flat_map(|x| x.ports.iter()))
   }
 }
 
@@ -368,5 +408,14 @@ impl Parse for Fn {
     let inputs = inputs.into_iter().collect::<Vec<_>>();
     let net: Net = input.parse()?;
     Ok(Fn { name, inputs, net })
+  }
+}
+
+impl Fn {
+  pub fn all_idents<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
+    self
+      .inputs
+      .iter()
+      .chain(self.net.agents.iter().flat_map(|x| x.ports.iter()))
   }
 }
