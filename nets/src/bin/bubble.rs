@@ -1,4 +1,4 @@
-use internets::*;
+use internets_nets::*;
 
 /*
 // Sorts a list

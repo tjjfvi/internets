@@ -1,4 +1,4 @@
-use internets::*;
+use internets_nets::*;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Nat;

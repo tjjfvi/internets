@@ -2,6 +2,7 @@ mod addr;
 mod alloc;
 mod buffer;
 mod delta;
+mod foo;
 mod kind;
 mod length;
 mod macros;

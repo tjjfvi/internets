@@ -1,9 +1,3 @@
-[package]
-name = "internets"
-version = "0.1.0"
-edition = "2021"
+[workspace]
 
-[dependencies]
-
-[features]
-unsafe = []
+members = ["nets", "interactions-macro"]
