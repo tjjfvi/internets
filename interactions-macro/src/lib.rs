@@ -73,12 +73,6 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
         pub const #kind_ident: #crate_path::Kind = #crate_path::Kind::of(#i);
         pub const #len_ident: #crate_path::Length = #crate_path::Length::of(#arity) #payload_add;
       );
-      let payload_ty_or_unit = s
-        .payload
-        .as_ref()
-        .map(|x| &x.ty)
-        .map(|x| quote!(#x))
-        .unwrap_or(quote!(()));
       let ports = s
         .ports
         .iter()
@@ -101,14 +95,8 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
         pub fn #name<M: #crate_path::Alloc>(net: &mut #crate_path::Net<M>)
           -> [#crate_path::LinkHalf; #arity_usize]
         {
-          const PRINCIPAL: [#crate_path::Word; 1] =
-            [#crate_path::Word::kind(#ty_name::#kind_ident)];
-          const AUXILLARY: [#crate_path::Word; #arity_usize - 1] =
-            [#crate_path::Word::NULL; #arity_usize - 1];
-          #crate_path::const_concat_array!(PORTS = PRINCIPAL + AUXILLARY);
-          #crate_path::const_payload_array!(PAYLOAD: #payload_ty_or_unit);
-          #crate_path::const_concat_array!(CHUNK = PORTS + PAYLOAD);
-          let chunk = #crate_path::Alloc::alloc(net, &CHUNK);
+          let chunk = #crate_path::Alloc::alloc(net, #ty_name::#len_ident);
+          *#crate_path::BufferMut::word_mut(net, chunk) = #crate_path::Word::kind(#ty_name::#kind_ident);
           [#(#ports),*]
         }
       )

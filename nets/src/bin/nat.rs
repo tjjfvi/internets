@@ -50,7 +50,7 @@ impl Interactions for Nat {
           Word::port(Delta::of(-4), PortMode::Auxiliary),
           Word::port(Delta::of(-3), PortMode::Auxiliary),
         ];
-        let chunk = net.alloc(CHUNK);
+        let chunk = net.alloc_write(CHUNK);
         net.link(
           LinkHalf::From(b_addr + Delta::of(1)),
           LinkHalf::Port(chunk + Delta::of(4), PortMode::Principal),
@@ -109,7 +109,7 @@ impl Interactions for Nat {
           Word::port(Delta::of(-4), PortMode::Principal),
           Word::NULL,
         ];
-        let chunk = net.alloc(CHUNK);
+        let chunk = net.alloc_write(CHUNK);
         net.link(
           LinkHalf::From(b_addr + Delta::of(2)),
           LinkHalf::Port(chunk + Delta::of(2), PortMode::Auxiliary),
@@ -138,41 +138,46 @@ impl Interactions for Nat {
 }
 
 fn main() {
-  let mut net = Net::new(RingAlloc::new(ArrayBuffer::new(1 << 28)));
-  let base = net.alloc(&[
-    Word::port(Delta::of(3), PortMode::Auxiliary),
-    Word::kind(Nat::MUL),
-    Word::port(Delta::of(4), PortMode::Auxiliary),
-    Word::port(Delta::of(-3), PortMode::Auxiliary),
-    Word::kind(Nat::CLONE),
-    Word::port(Delta::of(-4), PortMode::Principal),
-    Word::port(Delta::of(-4), PortMode::Auxiliary),
-    Word::kind(Nat::MUL),
-    Word::port(Delta::of(4), PortMode::Auxiliary),
-    Word::port(Delta::of(-5), PortMode::Principal),
-    Word::kind(Nat::CLONE),
-    Word::port(Delta::of(-4), PortMode::Principal),
-    Word::port(Delta::of(-4), PortMode::Auxiliary),
-    Word::kind(Nat::MUL),
-    Word::port(Delta::of(4), PortMode::Auxiliary),
-    Word::port(Delta::of(-5), PortMode::Principal),
-    Word::kind(Nat::CLONE),
-    Word::port(Delta::of(-4), PortMode::Principal),
-    Word::port(Delta::of(-4), PortMode::Auxiliary),
-    Word::kind(Nat::MUL),
-    Word::port(Delta::of(4), PortMode::Auxiliary),
-    Word::port(Delta::of(-5), PortMode::Principal),
-    Word::kind(Nat::CLONE),
-    Word::port(Delta::of(-4), PortMode::Principal),
-    Word::port(Delta::of(-4), PortMode::Auxiliary),
-    Word::kind(Nat::SUCC),
-    Word::port(Delta::of(1), PortMode::Principal),
-    Word::kind(Nat::SUCC),
-    Word::kind(Nat::ZERO),
-  ]);
-  net.link(
-    LinkHalf::Port(base + Delta::of(22), PortMode::Principal),
-    LinkHalf::Port(base + Delta::of(25), PortMode::Principal),
-  );
-  reduce_with_stats(&mut net, &Nat);
+  let mut stats = Stats::default();
+  let mut buffer = ArrayBuffer::new(1 << 19);
+  for _ in 0..1000 {
+    let mut net = Net::new(RingAlloc::new(buffer.as_mut()));
+    let base = net.alloc_write(&[
+      Word::port(Delta::of(3), PortMode::Auxiliary),
+      Word::kind(Nat::MUL),
+      Word::port(Delta::of(4), PortMode::Auxiliary),
+      Word::port(Delta::of(-3), PortMode::Auxiliary),
+      Word::kind(Nat::CLONE),
+      Word::port(Delta::of(-4), PortMode::Principal),
+      Word::port(Delta::of(-4), PortMode::Auxiliary),
+      Word::kind(Nat::MUL),
+      Word::port(Delta::of(4), PortMode::Auxiliary),
+      Word::port(Delta::of(-5), PortMode::Principal),
+      Word::kind(Nat::CLONE),
+      Word::port(Delta::of(-4), PortMode::Principal),
+      Word::port(Delta::of(-4), PortMode::Auxiliary),
+      Word::kind(Nat::MUL),
+      Word::port(Delta::of(4), PortMode::Auxiliary),
+      Word::port(Delta::of(-5), PortMode::Principal),
+      Word::kind(Nat::CLONE),
+      Word::port(Delta::of(-4), PortMode::Principal),
+      Word::port(Delta::of(-4), PortMode::Auxiliary),
+      Word::kind(Nat::MUL),
+      Word::port(Delta::of(4), PortMode::Auxiliary),
+      Word::port(Delta::of(-5), PortMode::Principal),
+      Word::kind(Nat::CLONE),
+      Word::port(Delta::of(-4), PortMode::Principal),
+      Word::port(Delta::of(-4), PortMode::Auxiliary),
+      Word::kind(Nat::SUCC),
+      Word::port(Delta::of(1), PortMode::Principal),
+      Word::kind(Nat::SUCC),
+      Word::kind(Nat::ZERO),
+    ]);
+    net.link(
+      LinkHalf::Port(base + Delta::of(22), PortMode::Principal),
+      LinkHalf::Port(base + Delta::of(25), PortMode::Principal),
+    );
+    reduce_with_stats(&mut net, &Nat, &mut stats);
+  }
+  println!("{stats}");
 }

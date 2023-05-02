@@ -1,15 +1,15 @@
 use crate::*;
 use std::{
   fmt::Debug,
-  ops::Range,
+  ops::{Deref, DerefMut, Range},
   ptr::{read_unaligned, write_unaligned},
 };
 
-pub struct ArrayBuffer {
-  array: Box<[Word]>,
+pub struct ArrayBuffer<T> {
+  pub array: T,
 }
 
-impl Debug for ArrayBuffer {
+impl<T: Deref<Target = [Word]>> Debug for ArrayBuffer<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     let mut st = f.debug_map();
     for (i, val) in self.array.iter().enumerate() {
@@ -19,7 +19,7 @@ impl Debug for ArrayBuffer {
   }
 }
 
-impl Buffer for ArrayBuffer {
+impl<T: Deref<Target = [Word]>> Buffer for ArrayBuffer<T> {
   #[inline(always)]
   fn buffer_bounds(&self) -> Range<Addr> {
     let start = unsafe { self.array.get_unchecked(0) } as *const Word as *mut Word;
@@ -60,7 +60,7 @@ impl Buffer for ArrayBuffer {
   }
 }
 
-impl BufferMut for ArrayBuffer {
+impl<T: DerefMut<Target = [Word]>> BufferMut for ArrayBuffer<T> {
   #[inline(always)]
   fn word_mut(&mut self, addr: Addr) -> &mut Word {
     self.assert_valid(addr, Length::of(1));
@@ -79,10 +79,26 @@ impl BufferMut for ArrayBuffer {
   }
 }
 
-impl ArrayBuffer {
+impl ArrayBuffer<Box<[Word]>> {
   pub fn new(size: usize) -> Self {
     ArrayBuffer {
       array: vec![Word::NULL; size].into_boxed_slice(),
+    }
+  }
+}
+
+impl<T: Deref<Target = [Word]>> ArrayBuffer<T> {
+  pub fn as_ref(&self) -> ArrayBuffer<&[Word]> {
+    ArrayBuffer {
+      array: &*self.array,
+    }
+  }
+}
+
+impl<T: DerefMut<Target = [Word]>> ArrayBuffer<T> {
+  pub fn as_mut(&mut self) -> ArrayBuffer<&mut [Word]> {
+    ArrayBuffer {
+      array: &mut *self.array,
     }
   }
 }

@@ -19,6 +19,17 @@ macro_rules! safe {
 }
 
 #[macro_export]
+macro_rules! oom {
+  () => {
+    if cfg!(feature = "no_oom") {
+      unsafe { std::hint::unreachable_unchecked() }
+    } else {
+      panic!("OOM");
+    }
+  };
+}
+
+#[macro_export]
 macro_rules! u64_0 {
   ($x:literal) => {
     if cfg!(target_endian = "big") {

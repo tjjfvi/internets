@@ -23,11 +23,12 @@ impl<B: BufferMut> DelegateBufferMut for BumpAlloc<B> {
 
 impl<B: BufferMut> Alloc for BumpAlloc<B> {
   #[inline(always)]
-  fn alloc(&mut self, data: &[Word]) -> Addr {
-    let len = Length::of(data.len() as u32);
+  fn alloc(&mut self, len: Length) -> Addr {
     let addr = self.alloc;
     self.alloc = addr + len;
-    self.slice_mut(addr, len).copy_from_slice(data);
+    if self.alloc > self.buffer_bounds().end {
+      oom!();
+    }
     addr
   }
 

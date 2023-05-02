@@ -1,15 +1,24 @@
 mod bump;
+mod link;
 mod ring;
 
 use std::fmt::Debug;
 
 pub use bump::*;
+pub use link::*;
 pub use ring::*;
 
 use crate::*;
 
 pub trait Alloc: BufferMut + Debug {
-  fn alloc(&mut self, data: &[Word]) -> Addr;
+  fn alloc(&mut self, len: Length) -> Addr;
+  #[inline(always)]
+  fn alloc_write(&mut self, data: &[Word]) -> Addr {
+    let len = Length::of(data.len() as u32);
+    let addr = self.alloc(len);
+    self.slice_mut(addr, len).copy_from_slice(data);
+    addr
+  }
   fn free(&mut self, addr: Addr, len: Length);
 }
 
@@ -36,8 +45,12 @@ impl<T: DelegateAlloc> DelegateBufferMut for T {
 
 impl<T: DelegateAlloc> Alloc for T {
   #[inline(always)]
-  fn alloc(&mut self, data: &[Word]) -> Addr {
-    self.delegatee_alloc_mut().alloc(data)
+  fn alloc(&mut self, len: Length) -> Addr {
+    self.delegatee_alloc_mut().alloc(len)
+  }
+  #[inline(always)]
+  fn alloc_write(&mut self, data: &[Word]) -> Addr {
+    self.delegatee_alloc_mut().alloc_write(data)
   }
   #[inline(always)]
   fn free(&mut self, addr: Addr, len: Length) {

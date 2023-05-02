@@ -1,11 +1,15 @@
 use crate::*;
 use std::ops::{Add, Sub};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Addr(pub(super) *mut Word);
 
 impl Addr {
   pub const NULL: Addr = Addr(0 as *mut Word);
+  #[inline(always)]
+  pub fn is_null(&self) -> bool {
+    self.0 as usize == 0
+  }
 }
 
 impl Add<Delta> for Addr {

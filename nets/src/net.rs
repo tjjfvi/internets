@@ -1,10 +1,13 @@
 use crate::*;
-use std::{fmt::Debug, time::Instant};
+use std::{
+  fmt::{Debug, Display},
+  time::{Duration, Instant},
+};
 
 #[derive(Debug)]
 pub struct Net<M: Alloc> {
-  pub(super) mem: M,
-  pub(super) active: Vec<ActivePair>,
+  pub mem: M,
+  pub active: Vec<ActivePair>,
 }
 
 pub enum LinkHalf {
@@ -135,20 +138,38 @@ impl<M: Alloc> Net<M> {
 }
 
 #[derive(Debug)]
-pub(super) struct ActivePair(pub(super) Word, pub(super) Word);
+pub struct ActivePair(pub(super) Word, pub(super) Word);
 
 pub trait Interactions {
   fn reduce<M: Alloc>(&self, net: &mut Net<M>, a: (Kind, Addr), b: (Kind, Addr));
 }
 
-#[inline(always)]
-pub fn reduce_with_stats<M: Alloc, I: Interactions>(net: &mut Net<M>, interactions: &I) {
-  let start = Instant::now();
-  let mut count = 0;
-  while net.reduce(interactions) {
-    count += 1;
+#[derive(Default)]
+pub struct Stats {
+  pub ops: u32,
+  pub elapsed: Duration,
+}
+
+impl Display for Stats {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let ops = self.ops;
+    let elapsed = self.elapsed;
+    let speed = (ops as f64) / (elapsed.as_nanos() as f64 / 1.0e3);
+    write!(f, "{ops} ops in {elapsed:?} ({speed:.2} op/µs)")
   }
-  let elapsed = Instant::now() - start;
-  let speed = (count as f64) / (elapsed.as_nanos() as f64 / 1.0e3);
-  println!("{count} ops in {elapsed:?} ({speed:.2} op/µs)");
+}
+
+#[inline(always)]
+pub fn reduce_with_stats<M: Alloc, I: Interactions>(
+  net: &mut Net<M>,
+  interactions: &I,
+  stats: &mut Stats,
+) {
+  let start = Instant::now();
+  let mut ops = 0;
+  while net.reduce(interactions) {
+    ops += 1;
+  }
+  stats.elapsed += Instant::now() - start;
+  stats.ops += ops;
 }

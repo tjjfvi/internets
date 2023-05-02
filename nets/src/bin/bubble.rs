@@ -73,7 +73,7 @@ impl Interactions for Bubble {
     macro_rules! partial_op {
       ($new_kind:expr) => {{
         const CHUNK: &'static [Word] = &[Word::kind($new_kind), Word::NULL, Word::NULL, Word::NULL];
-        let chunk = net.alloc(CHUNK);
+        let chunk = net.alloc_write(CHUNK);
         net.write_payload(
           chunk + Delta::of(1),
           net.read_payload::<u64>(a_addr + Delta::of(1)),
@@ -138,7 +138,7 @@ impl Interactions for Bubble {
       (Bubble::U64, Bubble::GT_) => finish_cmp!(|x, y| x > y),
       (Bubble::U64, Bubble::CLONE) => {
         const CHUNK: &'static [Word] = &[Word::kind(Bubble::U64), Word::NULL, Word::NULL];
-        let chunk = net.alloc(CHUNK);
+        let chunk = net.alloc_write(CHUNK);
         net.write_payload::<u64>(
           chunk + Delta::of(1),
           net.read_payload(a_addr + Delta::of(1)),
@@ -165,7 +165,7 @@ impl Interactions for Bubble {
       }
       (Bubble::CONS, Bubble::SORT) => {
         const CHUNK: &'static [Word] = &[Word::kind(Bubble::INSERT), Word::NULL, Word::NULL];
-        let chunk = net.alloc(CHUNK);
+        let chunk = net.alloc_write(CHUNK);
         net.link(
           LinkHalf::From(b_addr + Delta::of(1)),
           LinkHalf::Port(chunk + Delta::of(2), PortMode::Auxiliary),
@@ -190,7 +190,7 @@ impl Interactions for Bubble {
           Word::NULL,
           Word::kind(Bubble::NIL),
         ];
-        let chunk = net.alloc(CHUNK);
+        let chunk = net.alloc_write(CHUNK);
         net.link(
           LinkHalf::From(b_addr + Delta::of(1)),
           LinkHalf::Port(chunk + Delta::of(1), PortMode::Auxiliary),
@@ -218,7 +218,7 @@ impl Interactions for Bubble {
           Word::NULL,
           Word::NULL,
         ];
-        let chunk = net.alloc(CHUNK);
+        let chunk = net.alloc_write(CHUNK);
         net.link(
           LinkHalf::From(a_addr + Delta::of(1)),
           LinkHalf::Port(chunk + Delta::of(3), PortMode::Principal),
@@ -247,7 +247,7 @@ impl Interactions for Bubble {
           Word::NULL,
           Word::NULL,
         ];
-        let chunk = net.alloc(CHUNK);
+        let chunk = net.alloc_write(CHUNK);
         net.link(
           LinkHalf::From(b_addr + Delta::of(1)),
           LinkHalf::Port(chunk + Delta::of(1), PortMode::Auxiliary),
@@ -275,7 +275,7 @@ impl Interactions for Bubble {
           Word::NULL,
           Word::NULL,
         ];
-        let chunk = net.alloc(CHUNK);
+        let chunk = net.alloc_write(CHUNK);
         net.link(
           LinkHalf::From(b_addr + Delta::of(2)),
           LinkHalf::Port(chunk + Delta::of(1), PortMode::Auxiliary),
@@ -335,7 +335,7 @@ impl Interactions for Bubble {
             u64_1!(4294967296),
             Word::port(Delta::of(-23), PortMode::Auxiliary),
           ];
-          let chunk = net.alloc(CHUNK);
+          let chunk = net.alloc_write(CHUNK);
           net.link(
             LinkHalf::Port(a_addr, PortMode::Principal),
             LinkHalf::Port(chunk + Delta::of(9), PortMode::Principal),
@@ -353,7 +353,7 @@ impl Interactions for Bubble {
       }
       (Bubble::NIL, Bubble::SUM) => {
         const CHUNK: &'static [Word] = &[Word::kind(Bubble::U64), u64_0!(0), u64_0!(0)];
-        let chunk = net.alloc(CHUNK);
+        let chunk = net.alloc_write(CHUNK);
         net.link(
           LinkHalf::From(b_addr + Delta::of(1)),
           LinkHalf::Port(chunk, PortMode::Principal),
@@ -362,7 +362,7 @@ impl Interactions for Bubble {
       }
       (Bubble::CONS, Bubble::SUM) => {
         const CHUNK: &'static [Word] = &[Word::kind(Bubble::ADD), Word::NULL, Word::NULL];
-        let chunk = net.alloc(CHUNK);
+        let chunk = net.alloc_write(CHUNK);
         net.link(
           LinkHalf::From(a_addr + Delta::of(1)),
           LinkHalf::Port(chunk, PortMode::Principal),
@@ -389,7 +389,7 @@ impl Interactions for Bubble {
 
 fn main() {
   let mut net = Net::new(RingAlloc::new(ArrayBuffer::new(1 << 29)));
-  let base = net.alloc(&[
+  let base = net.alloc_write(&[
     Word::port(Delta::of(2), PortMode::Auxiliary),
     // Word::port(Delta::of(7), PortMode::Auxiliary),
     Word::kind(Bubble::SUM),
@@ -411,6 +411,7 @@ fn main() {
     LinkHalf::Port(base + Delta::of(5), PortMode::Principal),
     LinkHalf::Port(base + Delta::of(8), PortMode::Principal),
   );
-  reduce_with_stats(&mut net, &Bubble);
-  dbg!(net.read_payload::<u64>(net.origin() + net.word(net.origin()).as_port() + Delta::of(1)));
+  let mut stats = Stats::default();
+  reduce_with_stats(&mut net, &Bubble, &mut stats);
+  println!("{stats}");
 }

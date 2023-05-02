@@ -24,8 +24,7 @@ impl<B: BufferMut> DelegateBufferMut for RingAlloc<B> {
 }
 
 impl<B: BufferMut> Alloc for RingAlloc<B> {
-  fn alloc(&mut self, data: &[Word]) -> Addr {
-    let len = Length::of(data.len() as u32);
+  fn alloc(&mut self, len: Length) -> Addr {
     let initial = self.alloc;
     loop {
       let addr = self.alloc;
@@ -59,12 +58,11 @@ impl<B: BufferMut> Alloc for RingAlloc<B> {
           self.dll_link(prev, next);
           self.alloc = next;
         }
-        self.slice_mut(addr, len).copy_from_slice(data);
         return addr;
       }
       self.alloc = next;
       if self.alloc.0 == initial.0 {
-        fail!(panic!("OOM"));
+        oom!();
       }
     }
   }
@@ -91,6 +89,8 @@ impl<B: BufferMut> RingAlloc<B> {
     safe! { assert!(buffer.len() > Length::of(0)) };
     let alloc_addr = buffer.origin();
     *buffer.word_mut(alloc_addr) = Word::null_len(buffer.len());
+    *buffer.word_mut(alloc_addr + Delta::of(1)) = Word::NULL;
+    *buffer.word_mut(alloc_addr + Delta::of(2)) = Word::NULL;
     RingAlloc {
       buffer,
       alloc: alloc_addr,

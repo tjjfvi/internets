@@ -78,10 +78,14 @@ interactions! {
 
 fn main() {
   use internets_nets::*;
-  let mut net = Net::new(RingAlloc::new(ArrayBuffer::new(1 << 28)));
-  let free = net.alloc(&[Word::NULL]);
-  let [free_0] = NatNum::main(&mut net);
-  net.link(free_0, LinkHalf::Port(free, PortMode::Auxiliary));
-  // dbg!(&net);
-  reduce_with_stats(&mut net, &NatNum);
+  let mut stats = Stats::default();
+  let mut buffer = ArrayBuffer::new(1 << 18);
+  for _ in 0..1000 {
+    let mut net = Net::new(LinkAlloc::new(buffer.as_mut()));
+    let free = net.alloc_write(&[Word::NULL]);
+    let [free_0] = NatNum::main(&mut net);
+    net.link(free_0, LinkHalf::Port(free, PortMode::Auxiliary));
+    reduce_with_stats(&mut net, &NatNum, &mut stats);
+  }
+  eprintln!("{stats}");
 }
