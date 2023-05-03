@@ -62,14 +62,9 @@ impl Bubble {
   pub const SUM: Kind = Kind::of(23);
 }
 
-impl Interactions for Bubble {
+impl<N: Net> Interactions<N> for Bubble {
   #[inline(always)]
-  fn reduce<M: Alloc>(
-    &self,
-    net: &mut Net<M>,
-    (a_kind, a_addr): (Kind, Addr),
-    (b_kind, b_addr): (Kind, Addr),
-  ) {
+  fn reduce(&self, net: &mut N, (a_kind, a_addr): (Kind, Addr), (b_kind, b_addr): (Kind, Addr)) {
     macro_rules! partial_op {
       ($new_kind:expr) => {{
         const CHUNK: &'static [Word] = &[Word::kind($new_kind), Word::NULL, Word::NULL, Word::NULL];
@@ -388,7 +383,7 @@ impl Interactions for Bubble {
 }
 
 fn main() {
-  let mut net = Net::new(RingAlloc::new(ArrayBuffer::new(1 << 29)));
+  let mut net = BasicNet::new(RingAlloc::new(ArrayBuffer::new(1 << 29)));
   let base = net.alloc_write(&[
     Word::port(Delta::of(2), PortMode::Auxiliary),
     // Word::port(Delta::of(7), PortMode::Auxiliary),

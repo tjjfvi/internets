@@ -12,14 +12,9 @@ impl Nat {
   pub const MUL: Kind = Kind::of(5);
 }
 
-impl Interactions for Nat {
+impl<N: Net> Interactions<N> for Nat {
   #[inline(always)]
-  fn reduce<M: Alloc>(
-    &self,
-    net: &mut Net<M>,
-    (a_kind, a_addr): (Kind, Addr),
-    (b_kind, b_addr): (Kind, Addr),
-  ) {
+  fn reduce(&self, net: &mut N, (a_kind, a_addr): (Kind, Addr), (b_kind, b_addr): (Kind, Addr)) {
     match (a_kind, b_kind) {
       (Nat::ERASE, Nat::ZERO) => {}
       (Nat::CLONE, Nat::ZERO) => {
@@ -141,7 +136,7 @@ fn main() {
   let mut stats = Stats::default();
   let mut buffer = ArrayBuffer::new(1 << 19);
   for _ in 0..1000 {
-    let mut net = Net::new(RingAlloc::new(buffer.as_mut()));
+    let mut net = BasicNet::new(RingAlloc::new(buffer.as_mut()));
     let base = net.alloc_write(&[
       Word::port(Delta::of(3), PortMode::Auxiliary),
       Word::kind(Nat::MUL),

@@ -81,7 +81,7 @@ fn main() {
   let mut stats = Stats::default();
   let mut buffer = ArrayBuffer::new(1 << 18);
   for _ in 0..1000 {
-    let mut net = Net::new(LinkAlloc::new(buffer.as_mut()));
+    let mut net = BasicNet::new(LinkAlloc::new(buffer.as_mut()));
     let free = net.alloc_write(&[Word::NULL]);
     let [free_0] = NatNum::main(&mut net);
     net.link(free_0, LinkHalf::Port(free, PortMode::Auxiliary));

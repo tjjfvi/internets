@@ -4,8 +4,13 @@ use std::{
   time::{Duration, Instant},
 };
 
+pub trait Net: Alloc {
+  fn link(&mut self, a: LinkHalf, b: LinkHalf);
+  fn reduce(&mut self, interactions: &impl Interactions<Self>) -> bool;
+}
+
 #[derive(Debug)]
-pub struct Net<M: Alloc> {
+pub struct BasicNet<M: Alloc> {
   pub mem: M,
   pub active: Vec<ActivePair>,
 }
@@ -16,7 +21,7 @@ pub enum LinkHalf {
   Port(Addr, PortMode),
 }
 
-impl<M: Alloc> DelegateAlloc for Net<M> {
+impl<M: Alloc> DelegateAlloc for BasicNet<M> {
   type Alloc = M;
   #[inline(always)]
   fn delegatee_alloc(&self) -> &Self::Alloc {
@@ -28,16 +33,9 @@ impl<M: Alloc> DelegateAlloc for Net<M> {
   }
 }
 
-impl<M: Alloc> Net<M> {
-  pub fn new(mem: M) -> Self {
-    Net {
-      mem,
-      active: vec![],
-    }
-  }
-
+impl<M: Alloc> Net for BasicNet<M> {
   #[inline(always)]
-  pub fn link(&mut self, a: LinkHalf, b: LinkHalf) {
+  fn link(&mut self, a: LinkHalf, b: LinkHalf) {
     let a = self.get_link_half(a);
     let b = self.get_link_half(b);
     use LinkHalf::*;
@@ -53,6 +51,26 @@ impl<M: Alloc> Net<M> {
       (Kind(a), Port(b, Principal)) => self.link_prn_nil(b, a),
       (Kind(a), Kind(b)) => self.link_nil_nil(a, b),
       _ => fail!(unreachable!()),
+    }
+  }
+
+  #[inline(always)]
+  fn reduce(&mut self, interactions: &impl Interactions<Self>) -> bool {
+    if let Some(pair) = self.active.pop() {
+      let (a, b) = self.resolve_active_pair(pair);
+      interactions.reduce(self, a, b);
+      true
+    } else {
+      false
+    }
+  }
+}
+
+impl<M: Alloc> BasicNet<M> {
+  pub fn new(mem: M) -> Self {
+    BasicNet {
+      mem,
+      active: vec![],
     }
   }
 
@@ -103,17 +121,6 @@ impl<M: Alloc> Net<M> {
   }
 
   #[inline(always)]
-  pub fn reduce(&mut self, interactions: &impl Interactions) -> bool {
-    if let Some(pair) = self.active.pop() {
-      let (a, b) = self.resolve_active_pair(pair);
-      interactions.reduce(self, a, b);
-      true
-    } else {
-      false
-    }
-  }
-
-  #[inline(always)]
   fn resolve_active_half(&self, word: Word) -> (Kind, Addr) {
     match word.mode() {
       WordMode::Kind => (word.as_kind(), Addr::NULL),
@@ -140,8 +147,8 @@ impl<M: Alloc> Net<M> {
 #[derive(Debug)]
 pub struct ActivePair(pub(super) Word, pub(super) Word);
 
-pub trait Interactions {
-  fn reduce<M: Alloc>(&self, net: &mut Net<M>, a: (Kind, Addr), b: (Kind, Addr));
+pub trait Interactions<N: Net + ?Sized> {
+  fn reduce(&self, net: &mut N, a: (Kind, Addr), b: (Kind, Addr));
 }
 
 #[derive(Default)]
@@ -160,8 +167,8 @@ impl Display for Stats {
 }
 
 #[inline(always)]
-pub fn reduce_with_stats<M: Alloc, I: Interactions>(
-  net: &mut Net<M>,
+pub fn reduce_with_stats<N: Net, I: Interactions<N>>(
+  net: &mut N,
   interactions: &I,
   stats: &mut Stats,
 ) {

@@ -61,7 +61,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
           pub const #kind_ident: #crate_path::Kind = #crate_path::Kind::of(#i);
           pub const #len_ident: #crate_path::Length = #crate_path::Length::of(0);
           pub const #arity_ident: #crate_path::Length = #crate_path::Length::of(0);
-          pub fn #name<M: #crate_path::Alloc>(_: &mut #crate_path::Net<M>)
+          pub fn #name<N: #crate_path::Net>(_: &mut N)
             -> [#crate_path::LinkHalf; 1]
           {
             [#crate_path::LinkHalf::Kind(#ty_name::#kind_ident)]
@@ -102,7 +102,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
         pub const #len_ident: #crate_path::Length = #crate_path::Length::of(#arity) #payload_add;
         pub const #arity_ident: #crate_path::Length = #crate_path::Length::of(#arity);
         #[inline(always)]
-        pub fn #name<M: #crate_path::Alloc>(net: &mut #crate_path::Net<M>, #payload_arg)
+        pub fn #name<N: #crate_path::Net>(net: &mut N, #payload_arg)
           -> [#crate_path::LinkHalf; #arity_usize]
         {
           let chunk = #crate_path::Alloc::alloc(net, #ty_name::#len_ident);
@@ -134,7 +134,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
       })
       .collect::<Vec<_>>();
     quote!(
-      pub fn #name<M: #crate_path::Alloc>(net: &mut #crate_path::Net<M>)
+      pub fn #name<N: #crate_path::Net>(net: &mut N)
         -> [#crate_path::LinkHalf; #arity_usize]
       {
         #decls
@@ -239,11 +239,11 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
       #(#fn_defs)*
     }
 
-    impl #crate_path::Interactions for #ty_name {
+    impl<N: #crate_path::Net> #crate_path::Interactions<N> for #ty_name {
       #[inline(always)]
-      fn reduce<M: #crate_path::Alloc>(
+      fn reduce(
         &self,
-        net: &mut #crate_path::Net<M>,
+        net: &mut N,
         (a_kind, a_addr): (#crate_path::Kind, #crate_path::Addr),
         (b_kind, b_addr): (#crate_path::Kind, #crate_path::Addr),
       ) {

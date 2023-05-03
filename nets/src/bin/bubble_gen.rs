@@ -120,7 +120,7 @@ interactions! {
 
 fn main() {
   let mut stats = Stats::default();
-  let mut net = Net::new(LinkAlloc::new(ArrayBuffer::new(1 << 20)));
+  let mut net = BasicNet::new(LinkAlloc::new(ArrayBuffer::new(1 << 20)));
   BubbleGen::main(&mut net);
   reduce_with_stats(&mut net, &BubbleGen, &mut stats);
   println!("{stats}");
