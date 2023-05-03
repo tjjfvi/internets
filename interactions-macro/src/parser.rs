@@ -195,6 +195,7 @@ impl Parse for Net {
 pub struct Impl {
   pub left: ImplAgent,
   pub right: ImplAgent,
+  pub cond: Option<Expr>,
   pub net: Net,
 }
 
@@ -204,8 +205,21 @@ impl Parse for Impl {
     let left: ImplAgent = input.parse()?;
     let _: Token![for] = input.parse()?;
     let right: ImplAgent = input.parse()?;
+    let lookahead = input.lookahead1();
+    let cond = if lookahead.peek(Token![if]) {
+      let _: Token![if] = input.parse()?;
+      let cond: Expr = input.parse()?;
+      Some(cond)
+    } else {
+      None
+    };
     let net: Net = input.parse()?;
-    Ok(Impl { left, right, net })
+    Ok(Impl {
+      left,
+      right,
+      cond,
+      net,
+    })
   }
 }
 
@@ -303,22 +317,13 @@ impl Parse for RawImplAgentPart {
 pub struct PayloadPat {
   pub dollar: Token![$],
   pub pat: Pat,
-  pub cond: Option<Expr>,
 }
 
 impl Parse for PayloadPat {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
     let dollar: Token![$] = input.parse()?;
     let pat: Pat = Pat::parse_multi(input)?;
-    let lookahead = input.lookahead1();
-    let cond = if lookahead.peek(Token![if]) {
-      let _: Token![if] = input.parse()?;
-      let cond: Expr = input.parse()?;
-      Some(cond)
-    } else {
-      None
-    };
-    Ok(PayloadPat { dollar, pat, cond })
+    Ok(PayloadPat { dollar, pat })
   }
 }
 

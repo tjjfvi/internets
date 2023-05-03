@@ -4,9 +4,9 @@ use parser::*;
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, ToTokens};
 use std::collections::{BTreeMap, BTreeSet};
-use syn::{parse_macro_input, Ident};
+use syn::{parse_macro_input, Ident, Path};
 
 #[proc_macro_error]
 #[proc_macro]
@@ -52,6 +52,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
       let name = &s.name;
       let kind_ident = make_kind_ident(name);
       let len_ident = make_len_ident(name);
+      let arity_ident = make_arity_ident(name);
       let i = i as u32;
       let arity_usize = s.ports.len();
       let arity = arity_usize as u32;
@@ -59,6 +60,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
         return quote!(
           pub const #kind_ident: #crate_path::Kind = #crate_path::Kind::of(#i);
           pub const #len_ident: #crate_path::Length = #crate_path::Length::of(0);
+          pub const #arity_ident: #crate_path::Length = #crate_path::Length::of(0);
           pub fn #name<M: #crate_path::Alloc>(_: &mut #crate_path::Net<M>)
             -> [#crate_path::LinkHalf; 1]
           {
@@ -72,10 +74,6 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
         .map(|x| &x.ty)
         .map(|ty| quote!(.add(#crate_path::Length::of_payload::<#ty>())))
         .unwrap_or(quote!());
-      let consts = quote!(
-        pub const #kind_ident: #crate_path::Kind = #crate_path::Kind::of(#i);
-        pub const #len_ident: #crate_path::Length = #crate_path::Length::of(#arity) #payload_add;
-      );
       let ports = s
         .ports
         .iter()
@@ -92,14 +90,24 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
           }
         })
         .collect::<Vec<_>>();
+      let (payload_arg, payload_set) = s.payload.as_ref().as_ref().map(|x| {
+        let ty = &x.ty;
+        (
+        quote!(payload: #ty),
+        quote!(#crate_path::BufferMut::write_payload::<#ty>(net, chunk + #ty_name::#arity_ident, payload);),
+        )
+      }).unwrap_or((quote!(), quote!()));
       quote!(
-        #consts
+        pub const #kind_ident: #crate_path::Kind = #crate_path::Kind::of(#i);
+        pub const #len_ident: #crate_path::Length = #crate_path::Length::of(#arity) #payload_add;
+        pub const #arity_ident: #crate_path::Length = #crate_path::Length::of(#arity);
         #[inline(always)]
-        pub fn #name<M: #crate_path::Alloc>(net: &mut #crate_path::Net<M>)
+        pub fn #name<M: #crate_path::Alloc>(net: &mut #crate_path::Net<M>, #payload_arg)
           -> [#crate_path::LinkHalf; #arity_usize]
         {
           let chunk = #crate_path::Alloc::alloc(net, #ty_name::#len_ident);
           *#crate_path::BufferMut::word_mut(net, chunk) = #crate_path::Word::kind(#ty_name::#kind_ident);
+          #payload_set
           [#(#ports),*]
         }
       )
@@ -137,53 +145,90 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
     )
   });
 
-  let rules = input
-    .items
-    .iter()
-    .filter_map(Item::as_impl)
-    .map(|i| {
-      let (a, b) = if kinds.get(&i.left.name).unwrap().0 < kinds.get(&i.right.name).unwrap().0 {
-        (&i.left, &i.right)
-      } else {
-        (&i.right, &i.left)
-      };
-      let a_links = (1..=a.aux.len() as i32)
-        .map(|i| quote!(#crate_path::LinkHalf::From(a_addr + #crate_path::Delta::of(#i))))
-        .collect::<Vec<_>>();
-      let a_binds = bind_ports(&a.aux, quote!([#(#a_links),*]));
-      let b_links = (1..=b.aux.len() as i32)
-        .map(|i| quote!(#crate_path::LinkHalf::From(b_addr + #crate_path::Delta::of(#i))))
-        .collect::<Vec<_>>();
-      let b_binds = bind_ports(&b.aux, quote!([#(#b_links),*]));
-      let agents = i
-        .net
-        .agents
-        .iter()
-        .map(|x| quote_net_agent(ty_name, x))
-        .collect::<Vec<_>>();
-      let a_kind = make_kind_ident(&a.name);
-      let b_kind = make_kind_ident(&b.name);
-      let a_len = make_len_ident(&a.name);
-      let b_len = make_len_ident(&b.name);
-      let decls = declare_edge_idents(i.all_idents());
-      let links = link_edge_idents(i.all_idents());
-      quote!(
-        (#ty_name::#a_kind, #ty_name::#b_kind) => {
-          #decls
-          #a_binds
-          #b_binds
-          #(#agents)*
-          #links
-          if #ty_name::#a_len.non_zero() {
-            #crate_path::Alloc::free(net, a_addr, #ty_name::#a_len);
+  let rules = collect_multi_map(input.items.iter().filter_map(Item::as_impl).map(|i| {
+    let (a, b) = if kinds.get(&i.left.name).unwrap().0 < kinds.get(&i.right.name).unwrap().0 {
+      (&i.left, &i.right)
+    } else {
+      (&i.right, &i.left)
+    };
+    ((&a.name, &b.name), (a, b, i))
+  }))
+  .into_iter()
+  .map(|((a_name, b_name), arms)| {
+    let a_kind = make_kind_ident(a_name);
+    let b_kind = make_kind_ident(b_name);
+    let a_len = make_len_ident(a_name);
+    let b_len = make_len_ident(b_name);
+    let a_arity = make_arity_ident(a_name);
+    let b_arity = make_arity_ident(b_name);
+    let a_payload_read = kinds[a_name]
+      .1
+      .payload
+      .as_ref()
+      .map(|x| {
+        let ty = &x.ty;
+        quote!(#crate_path::Buffer::read_payload::<#ty>(net, a_addr + #ty_name::#a_arity))
+      })
+      .unwrap_or(quote!(()));
+    let b_payload_read = kinds[b_name]
+      .1
+      .payload
+      .as_ref()
+      .map(|x| {
+        let ty = &x.ty;
+        quote!(#crate_path::Buffer::read_payload::<#ty>(net, b_addr + #ty_name::#b_arity))
+      })
+      .unwrap_or(quote!(()));
+    let arms = arms
+      .into_iter()
+      .map(|(a, b, i)| {
+        let a_pat = a
+          .payload
+          .as_ref()
+          .map(|p| p.pat.to_token_stream())
+          .unwrap_or(quote!(()));
+        let b_pat = b
+          .payload
+          .as_ref()
+          .map(|p| p.pat.to_token_stream())
+          .unwrap_or(quote!(()));
+        let a_binds = destructure_agent(crate_path, quote!(a_addr), a);
+        let b_binds = destructure_agent(crate_path, quote!(b_addr), b);
+        let agents = i
+          .net
+          .agents
+          .iter()
+          .map(|x| quote_net_agent(ty_name, x))
+          .collect::<Vec<_>>();
+        let decls = declare_edge_idents(i.all_idents());
+        let links = link_edge_idents(i.all_idents());
+        let cond = i.cond.as_ref().map(|x| quote!(if #x)).unwrap_or(quote!());
+        quote!(
+          (#a_pat, #b_pat) #cond => {
+            #decls
+            #a_binds
+            #b_binds
+            #(#agents)*
+            #links
+            if #ty_name::#a_len.non_zero() {
+              #crate_path::Alloc::free(net, a_addr, #ty_name::#a_len);
+            }
+            if #ty_name::#b_len.non_zero() {
+              #crate_path::Alloc::free(net, b_addr, #ty_name::#b_len);
+            }
           }
-          if #ty_name::#b_len.non_zero() {
-            #crate_path::Alloc::free(net, b_addr, #ty_name::#b_len);
-          }
+        )
+      })
+      .collect::<Vec<_>>();
+    quote!(
+      (#ty_name::#a_kind, #ty_name::#b_kind) => {
+        match (#a_payload_read, #b_payload_read) {
+          #(#arms),*
         }
-      )
-    })
-    .collect::<Vec<_>>();
+      }
+    )
+  })
+  .collect::<Vec<_>>();
 
   quote!(
     struct #ty_name;
@@ -212,8 +257,20 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
   .into()
 }
 
+fn destructure_agent(crate_path: &Path, addr: TokenStream, agent: &ImplAgent) -> TokenStream {
+  let links = (1..=agent.aux.len() as i32)
+    .map(|i| quote!(#crate_path::LinkHalf::From(#addr + #crate_path::Delta::of(#i))))
+    .collect::<Vec<_>>();
+  let binds = bind_ports(&agent.aux, quote!([#(#links),*]));
+  binds
+}
+
 fn make_kind_ident(struct_name: &Ident) -> Ident {
   format_ident!("{}_KIND", struct_name)
+}
+
+fn make_arity_ident(struct_name: &Ident) -> Ident {
+  format_ident!("{}_ARITY", struct_name)
 }
 
 fn make_len_ident(struct_name: &Ident) -> Ident {
@@ -316,4 +373,12 @@ fn bind_ports(ports: &Vec<Ident>, source: TokenStream) -> TokenStream {
 
 fn edge_idents(ident: &Ident) -> (Ident, Ident) {
   (format_ident!("{}_0", ident), format_ident!("{}_1", ident))
+}
+
+fn collect_multi_map<K: Ord, V, I: Iterator<Item = (K, V)>>(iter: I) -> BTreeMap<K, Vec<V>> {
+  let mut map = BTreeMap::new();
+  for (key, val) in iter {
+    map.entry(key).or_insert(Vec::new()).push(val);
+  }
+  map
 }
