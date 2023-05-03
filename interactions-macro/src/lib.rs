@@ -5,7 +5,7 @@ use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::{format_ident, quote};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use syn::{parse_macro_input, Ident};
 
 #[proc_macro_error]
@@ -39,17 +39,20 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
     .filter_map(Item::as_struct)
     .enumerate()
     .map(|(i, s)| (&s.name, (i, s)))
-    .collect::<HashMap<_, _>>();
+    .collect::<BTreeMap<_, _>>();
   let crate_path = &input.crate_path;
   let ty_name = &input.ty;
 
-  let struct_defs = kinds
-    .values()
+  let struct_defs = input
+  .items
+  .iter()
+  .filter_map(Item::as_struct)
+  .enumerate()
     .map(|(i, s)| {
       let name = &s.name;
       let kind_ident = make_kind_ident(name);
       let len_ident = make_len_ident(name);
-      let i = *i as u32;
+      let i = i as u32;
       let arity_usize = s.ports.len();
       let arity = arity_usize as u32;
       if arity == 1 && s.payload.is_none() {
@@ -218,7 +221,7 @@ fn make_len_ident(struct_name: &Ident) -> Ident {
 }
 
 fn ensure_unique<'a, I: Iterator<Item = &'a Ident>>(idents: I) {
-  let mut seen = HashSet::new();
+  let mut seen = BTreeSet::new();
   for ident in idents {
     if !seen.insert(ident) {
       abort!(ident.span(), "duplicate identifier")
@@ -227,8 +230,8 @@ fn ensure_unique<'a, I: Iterator<Item = &'a Ident>>(idents: I) {
 }
 
 fn ensure_used_twice<'a, I: Iterator<Item = &'a Ident>>(idents: I) {
-  let mut all = HashSet::new();
-  let mut once = HashSet::new();
+  let mut all = BTreeSet::new();
+  let mut once = BTreeSet::new();
   for ident in idents {
     if !all.insert(ident) {
       if !once.remove(ident) {
@@ -245,7 +248,7 @@ fn ensure_used_twice<'a, I: Iterator<Item = &'a Ident>>(idents: I) {
 
 fn declare_edge_idents<'a, I: Iterator<Item = &'a Ident>>(idents: I) -> TokenStream {
   let decls = idents
-    .collect::<HashSet<_>>()
+    .collect::<BTreeSet<_>>()
     .iter()
     .map(|ident| {
       let (id_0, _) = edge_idents(ident);
@@ -257,7 +260,7 @@ fn declare_edge_idents<'a, I: Iterator<Item = &'a Ident>>(idents: I) -> TokenStr
 
 fn link_edge_idents<'a, I: Iterator<Item = &'a Ident>>(idents: I) -> TokenStream {
   let links = idents
-    .collect::<HashSet<_>>()
+    .collect::<BTreeSet<_>>()
     .iter()
     .map(|ident| {
       let (id_0, id_1) = edge_idents(ident);
