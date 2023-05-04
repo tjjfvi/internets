@@ -153,7 +153,7 @@ pub trait Interactions<N: Net + ?Sized> {
 
 #[derive(Default)]
 pub struct Stats {
-  pub ops: u32,
+  pub ops: u64,
   pub elapsed: Duration,
 }
 
