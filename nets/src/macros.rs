@@ -79,14 +79,4 @@ macro_rules! const_payload_array {
   };
 }
 
-pub use internets_interactions_macro::interactions as __interactions;
-
-#[macro_export]
-macro_rules! interactions {
-  ($($x:tt)*) => {
-    $crate::__interactions! {
-      use $crate;
-      $($x)*
-    }
-  };
-}
+pub use internets_interactions_macro::interactions;

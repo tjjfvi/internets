@@ -14,7 +14,12 @@ impl Nat {
 
 impl<N: Net> Interactions<N> for Nat {
   #[inline(always)]
-  fn reduce(&self, net: &mut N, (a_kind, a_addr): (Kind, Addr), (b_kind, b_addr): (Kind, Addr)) {
+  fn reduce(
+    &self,
+    net: &mut N,
+    (a_kind, a_addr): (Kind, Addr),
+    (b_kind, b_addr): (Kind, Addr),
+  ) -> bool {
     match (a_kind, b_kind) {
       (Nat::ERASE, Nat::ZERO) => {}
       (Nat::CLONE, Nat::ZERO) => {
@@ -127,8 +132,9 @@ impl<N: Net> Interactions<N> for Nat {
         );
         net.free(a_addr, Length::of(2))
       }
-      _ => fail!(unimplemented!("{:?} {:?}", a_kind, b_kind)),
+      _ => return false,
     }
+    true
   }
 }
 

@@ -64,7 +64,12 @@ impl Bubble {
 
 impl<N: Net> Interactions<N> for Bubble {
   #[inline(always)]
-  fn reduce(&self, net: &mut N, (a_kind, a_addr): (Kind, Addr), (b_kind, b_addr): (Kind, Addr)) {
+  fn reduce(
+    &self,
+    net: &mut N,
+    (a_kind, a_addr): (Kind, Addr),
+    (b_kind, b_addr): (Kind, Addr),
+  ) -> bool {
     macro_rules! partial_op {
       ($new_kind:expr) => {{
         const CHUNK: &'static [Word] = &[Word::kind($new_kind), Word::NULL, Word::NULL, Word::NULL];
@@ -377,8 +382,9 @@ impl<N: Net> Interactions<N> for Bubble {
         net.free(a_addr, Length::of(3));
       }
 
-      _ => fail!(unimplemented!("{:?} {:?}", a_kind, b_kind)),
+      _ => return false,
     };
+    true
   }
 }
 

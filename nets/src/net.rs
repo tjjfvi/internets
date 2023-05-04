@@ -58,7 +58,8 @@ impl<M: Alloc> Net for BasicNet<M> {
   fn reduce(&mut self, interactions: &impl Interactions<Self>) -> bool {
     if let Some(pair) = self.active.pop() {
       let (a, b) = self.resolve_active_pair(pair);
-      interactions.reduce(self, a, b);
+      let did_reduce = interactions.reduce(self, a, b);
+      debug_assert!(did_reduce);
       true
     } else {
       false
@@ -148,7 +149,12 @@ impl<M: Alloc> BasicNet<M> {
 pub struct ActivePair(pub(super) Word, pub(super) Word);
 
 pub trait Interactions<N: Net + ?Sized> {
-  fn reduce(&self, net: &mut N, a: (Kind, Addr), b: (Kind, Addr));
+  fn reduce(&self, net: &mut N, a: (Kind, Addr), b: (Kind, Addr)) -> bool;
+}
+
+pub trait InteractionsMod<N: Net + ?Sized>: Interactions<N> {
+  type Shift<const KIND_START: u32>: InteractionsMod<N>;
+  const KIND_END: u32;
 }
 
 #[derive(Default)]

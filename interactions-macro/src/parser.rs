@@ -1,17 +1,15 @@
-use syn::{braced, parenthesized, parse::Parse, Expr, Ident, Pat, Path, Token, Type};
+use syn::{braced, parenthesized, parse::Parse, Expr, Ident, Pat, Path, Token, Type, Visibility};
 
 #[derive(Debug)]
 pub struct Input {
-  pub crate_path: Path,
+  pub vis: Visibility,
   pub ty: Ident,
   pub items: Vec<Item>,
 }
 
 impl Parse for Input {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-    let _: Token![use] = input.parse()?;
-    let crate_path: Path = input.parse()?;
-    let _: Token![;] = input.parse()?;
+    let vis: Visibility = input.parse()?;
     let _: Token![type] = input.parse()?;
     let ty: Ident = input.parse()?;
     let _: Token![;] = input.parse()?;
@@ -19,11 +17,7 @@ impl Parse for Input {
     while !input.is_empty() {
       items.push(input.parse()?);
     }
-    Ok(Input {
-      crate_path,
-      ty,
-      items,
-    })
+    Ok(Input { vis, ty, items })
   }
 }
 
@@ -32,6 +26,7 @@ pub enum Item {
   Struct(Struct),
   Impl(Impl),
   Fn(Fn),
+  Use(Use),
 }
 
 impl Item {
@@ -53,6 +48,12 @@ impl Item {
       _ => None,
     }
   }
+  pub fn as_use(&self) -> Option<&Use> {
+    match self {
+      Item::Use(x) => Some(x),
+      _ => None,
+    }
+  }
 }
 
 impl Parse for Item {
@@ -64,6 +65,8 @@ impl Parse for Item {
       input.parse().map(Item::Impl)
     } else if lookahead.peek(Token![fn]) {
       input.parse().map(Item::Fn)
+    } else if lookahead.peek(Token![use]) {
+      input.parse().map(Item::Use)
     } else {
       Err(lookahead.error())
     }
@@ -236,6 +239,7 @@ impl Impl {
 
 #[derive(Debug)]
 pub struct ImplAgent {
+  pub src: Option<Ident>,
   pub name: Ident,
   pub aux: Vec<Ident>,
   pub payload: Option<PayloadPat>,
@@ -243,7 +247,13 @@ pub struct ImplAgent {
 
 impl Parse for ImplAgent {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-    let name: Ident = input.parse()?;
+    let mut src = None;
+    let mut name: Ident = input.parse()?;
+    if input.lookahead1().peek(Token![::]) {
+      let _: Token![::] = input.parse()?;
+      src = Some(name);
+      name = input.parse()?;
+    }
     let parts;
     parenthesized!(parts in input);
     let parts = parts.parse_terminated(RawImplAgentPart::parse, Token![,])?;
@@ -287,7 +297,12 @@ impl Parse for ImplAgent {
         }
       }
     }
-    Ok(ImplAgent { name, aux, payload })
+    Ok(ImplAgent {
+      src,
+      name,
+      aux,
+      payload,
+    })
   }
 }
 
@@ -329,6 +344,7 @@ impl Parse for PayloadPat {
 
 #[derive(Debug)]
 pub struct NetAgent {
+  pub src: Option<Ident>,
   pub name: Ident,
   pub ports: Vec<Ident>,
   pub payload: Option<PayloadExpr>,
@@ -336,7 +352,13 @@ pub struct NetAgent {
 
 impl Parse for NetAgent {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-    let name: Ident = input.parse()?;
+    let mut src = None;
+    let mut name: Ident = input.parse()?;
+    if input.lookahead1().peek(Token![::]) {
+      let _: Token![::] = input.parse()?;
+      src = Some(name);
+      name = input.parse()?;
+    }
     let parts;
     parenthesized!(parts in input);
     let parts = parts.parse_terminated(RawNetAgentPart::parse, Token![,])?;
@@ -356,6 +378,7 @@ impl Parse for NetAgent {
       }
     }
     Ok(NetAgent {
+      src,
       name,
       ports,
       payload,
@@ -422,5 +445,19 @@ impl Fn {
       .inputs
       .iter()
       .chain(self.net.agents.iter().flat_map(|x| x.ports.iter()))
+  }
+}
+
+#[derive(Debug)]
+pub struct Use {
+  pub path: Path,
+}
+
+impl Parse for Use {
+  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    let _: Token![use] = input.parse()?;
+    let path: Path = input.parse()?;
+    let _: Token![;] = input.parse()?;
+    Ok(Use { path })
   }
 }

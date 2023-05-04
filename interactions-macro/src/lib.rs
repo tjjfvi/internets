@@ -6,7 +6,7 @@ use proc_macro2::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::{format_ident, quote, ToTokens};
 use std::collections::{BTreeMap, BTreeSet};
-use syn::{parse_macro_input, Ident, Path};
+use syn::{parse_macro_input, Ident};
 
 #[proc_macro_error]
 #[proc_macro]
@@ -16,6 +16,8 @@ pub fn interactions(input: TokenStream1) -> TokenStream1 {
 
 fn _interactions(input: TokenStream1) -> TokenStream1 {
   let input = parse_macro_input!(input as Input);
+
+  let crate_path = &quote!(::internets_nets);
 
   ensure_unique(
     input
@@ -27,21 +29,39 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
 
   for item in &input.items {
     match item {
-      Item::Struct(_) => {}
       Item::Impl(i) => ensure_used_twice(i.all_idents()),
       Item::Fn(f) => ensure_used_twice(f.all_idents()),
+      _ => {}
     }
   }
 
-  let kinds = input
-    .items
-    .iter()
-    .filter_map(Item::as_struct)
-    .enumerate()
-    .map(|(i, s)| (&s.name, (i, s)))
-    .collect::<BTreeMap<_, _>>();
-  let crate_path = &input.crate_path;
   let ty_name = &input.ty;
+  let trait_name = make_trait_name(ty_name);
+  let trait_name = quote!(#trait_name);
+  let ty_vis = &input.vis;
+  let self_as_trait = quote!(<Self as #trait_name>);
+
+  let mut traits = BTreeMap::new();
+  traits.insert(None, quote!(#trait_name));
+  let mut include_impls = vec![];
+  let mut include_traits = vec![];
+  for u in input.items.iter().filter_map(Item::as_use) {
+    let path = &u.path;
+    let use_ty_name = &path.segments.last().unwrap().ident;
+    let path = {
+      let trait_name = make_trait_name(use_ty_name);
+      let leading = path.leading_colon;
+      let segments = path.segments.iter().rev().skip(1).rev().collect::<Vec<_>>();
+      quote!(#leading #(#segments::)* #trait_name)
+    };
+    include_impls.push(quote!(
+      impl #path for #ty_name {
+        const KIND_START: u32 = 0 #(+ <Self as #include_traits>::KIND_COUNT)*;
+      }
+    ));
+    traits.insert(Some(use_ty_name), quote!(#path));
+    include_traits.push(path);
+  }
 
   let struct_defs = input
   .items
@@ -50,6 +70,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
   .enumerate()
     .map(|(i, s)| {
       let name = &s.name;
+      let payload_ident = make_payload_ident(name);
       let kind_ident = make_kind_ident(name);
       let len_ident = make_len_ident(name);
       let arity_ident = make_arity_ident(name);
@@ -58,13 +79,14 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
       let arity = arity_usize as u32;
       if arity == 1 && s.payload.is_none() {
         return quote!(
-          pub const #kind_ident: #crate_path::Kind = #crate_path::Kind::of(#i);
-          pub const #len_ident: #crate_path::Length = #crate_path::Length::of(0);
-          pub const #arity_ident: #crate_path::Length = #crate_path::Length::of(0);
-          pub fn #name<N: #crate_path::Net>(_: &mut N)
+          const #kind_ident: #crate_path::Kind = #crate_path::Kind::of(#self_as_trait::KIND_START + #i);
+          const #len_ident: #crate_path::Length = #crate_path::Length::of(0);
+          const #arity_ident: #crate_path::Length = #crate_path::Length::of(0);
+          fn #payload_ident<N: #crate_path::Net>(_: &mut N, _: #crate_path::Addr) {}
+          fn #name<N: #crate_path::Net>(_: &mut N)
             -> [#crate_path::LinkHalf; 1]
           {
-            [#crate_path::LinkHalf::Kind(#ty_name::#kind_ident)]
+            [#crate_path::LinkHalf::Kind(#self_as_trait::#kind_ident)]
           }
         );
       }
@@ -90,23 +112,29 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
           }
         })
         .collect::<Vec<_>>();
-      let (payload_arg, payload_set) = s.payload.as_ref().as_ref().map(|x| {
+      let (read_payload, payload_arg, payload_set) = s.payload.as_ref().map(|x| {
         let ty = &x.ty;
         (
+          quote!(fn #payload_ident<N: #crate_path::Net>(net: &mut N, addr: #crate_path::Addr) -> #ty{
+            #crate_path::Buffer::read_payload::<#ty>(net, addr + #self_as_trait::#arity_ident)
+          }),
         quote!(payload: #ty),
-        quote!(#crate_path::BufferMut::write_payload::<#ty>(net, chunk + #ty_name::#arity_ident, payload);),
+        quote!(#crate_path::BufferMut::write_payload::<#ty>(net, chunk + #self_as_trait::#arity_ident, payload);),
         )
-      }).unwrap_or((quote!(), quote!()));
+      }).unwrap_or((quote!(
+        fn #payload_ident<N: #crate_path::Net>(_: &mut N, _: #crate_path::Addr) {}
+      ), quote!(), quote!()));
       quote!(
-        pub const #kind_ident: #crate_path::Kind = #crate_path::Kind::of(#i);
-        pub const #len_ident: #crate_path::Length = #crate_path::Length::of(#arity) #payload_add;
-        pub const #arity_ident: #crate_path::Length = #crate_path::Length::of(#arity);
+        const #kind_ident: #crate_path::Kind = #crate_path::Kind::of(#self_as_trait::KIND_START + #i);
+        const #len_ident: #crate_path::Length = #crate_path::Length::of(#arity) #payload_add;
+        const #arity_ident: #crate_path::Length = #crate_path::Length::of(#arity);
+        #read_payload
         #[inline(always)]
-        pub fn #name<N: #crate_path::Net>(net: &mut N, #payload_arg)
+        fn #name<N: #crate_path::Net>(net: &mut N, #payload_arg)
           -> [#crate_path::LinkHalf; #arity_usize]
         {
-          let chunk = #crate_path::Alloc::alloc(net, #ty_name::#len_ident);
-          *#crate_path::BufferMut::word_mut(net, chunk) = #crate_path::Word::kind(#ty_name::#kind_ident);
+          let chunk = #crate_path::Alloc::alloc(net, #self_as_trait::#len_ident);
+          *#crate_path::BufferMut::word_mut(net, chunk) = #crate_path::Word::kind(#self_as_trait::#kind_ident);
           #payload_set
           [#(#ports),*]
         }
@@ -119,7 +147,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
       .net
       .agents
       .iter()
-      .map(|x| quote_net_agent(ty_name, x))
+      .map(|x| quote_net_agent(&traits, x))
       .collect::<Vec<_>>();
     let decls = declare_edge_idents(f.all_idents());
     let links = link_edge_idents(f.all_idents().filter(|x| !f.inputs.contains(x)));
@@ -134,7 +162,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
       })
       .collect::<Vec<_>>();
     quote!(
-      pub fn #name<N: #crate_path::Net>(net: &mut N)
+      fn #name<N: #crate_path::Net>(net: &mut N)
         -> [#crate_path::LinkHalf; #arity_usize]
       {
         #decls
@@ -145,40 +173,24 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
     )
   });
 
-  let rules = collect_multi_map(input.items.iter().filter_map(Item::as_impl).map(|i| {
-    let (a, b) = if kinds.get(&i.left.name).unwrap().0 < kinds.get(&i.right.name).unwrap().0 {
-      (&i.left, &i.right)
-    } else {
-      (&i.right, &i.left)
-    };
-    ((&a.name, &b.name), (a, b, i))
+  let rules = collect_multi_map(input.items.iter().filter_map(Item::as_impl).flat_map(|i| {
+    let a = &i.left;
+    let b = &i.right;
+    [
+      ((&a.src, &a.name, &b.src, &b.name), (a, b, i)),
+      ((&b.src, &b.name, &a.src, &a.name), (b, a, i)),
+    ]
   }))
   .into_iter()
-  .map(|((a_name, b_name), arms)| {
+  .map(|((a_src, a_name, b_src, b_name), arms)| {
+    let a_src = &traits[&a_src.as_ref()];
+    let b_src = &traits[&b_src.as_ref()];
     let a_kind = make_kind_ident(a_name);
     let b_kind = make_kind_ident(b_name);
     let a_len = make_len_ident(a_name);
     let b_len = make_len_ident(b_name);
-    let a_arity = make_arity_ident(a_name);
-    let b_arity = make_arity_ident(b_name);
-    let a_payload_read = kinds[a_name]
-      .1
-      .payload
-      .as_ref()
-      .map(|x| {
-        let ty = &x.ty;
-        quote!(#crate_path::Buffer::read_payload::<#ty>(net, a_addr + #ty_name::#a_arity))
-      })
-      .unwrap_or(quote!(()));
-    let b_payload_read = kinds[b_name]
-      .1
-      .payload
-      .as_ref()
-      .map(|x| {
-        let ty = &x.ty;
-        quote!(#crate_path::Buffer::read_payload::<#ty>(net, b_addr + #ty_name::#b_arity))
-      })
-      .unwrap_or(quote!(()));
+    let a_payload = make_payload_ident(a_name);
+    let b_payload = make_payload_ident(b_name);
     let arms = arms
       .into_iter()
       .map(|(a, b, i)| {
@@ -198,7 +210,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
           .net
           .agents
           .iter()
-          .map(|x| quote_net_agent(ty_name, x))
+          .map(|x| quote_net_agent(&traits, x))
           .collect::<Vec<_>>();
         let decls = declare_edge_idents(i.all_idents());
         let links = link_edge_idents(i.all_idents());
@@ -210,33 +222,40 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
             #b_binds
             #(#agents)*
             #links
-            if #ty_name::#a_len.non_zero() {
-              #crate_path::Alloc::free(net, a_addr, #ty_name::#a_len);
-            }
-            if #ty_name::#b_len.non_zero() {
-              #crate_path::Alloc::free(net, b_addr, #ty_name::#b_len);
-            }
           }
         )
       })
       .collect::<Vec<_>>();
+    let a_kind_path = quote!(<Self as #a_src>::#a_kind);
+    let b_kind_path = quote!(<Self as #b_src>::#b_kind);
     quote!(
-      (#ty_name::#a_kind, #ty_name::#b_kind) => {
-        match (#a_payload_read, #b_payload_read) {
+      x if (#a_kind_path <= #b_kind_path) && x == (#a_kind_path, #b_kind_path) => {
+        match (
+          <Self as #a_src>::#a_payload(net, a_addr),
+          <Self as #b_src>::#b_payload(net, b_addr),
+        ) {
           #(#arms),*
+        }
+        if <Self as #a_src>::#a_len.non_zero() {
+          #crate_path::Alloc::free(net, a_addr, <Self as #a_src>::#a_len);
+        }
+        if <Self as #b_src>::#b_len.non_zero() {
+          #crate_path::Alloc::free(net, b_addr, <Self as #b_src>::#b_len);
         }
       }
     )
   })
   .collect::<Vec<_>>();
 
-  quote!(
-    struct #ty_name;
+  let kind_count = struct_defs.len() as u32;
 
-    #[allow(non_upper_case_globals, non_snake_case)]
-    impl #ty_name {
-      #(#struct_defs)*
-      #(#fn_defs)*
+  quote!(
+    #ty_vis struct #ty_name;
+
+    #(#include_impls)*
+
+    impl #trait_name for #ty_name {
+      const KIND_START: u32 = 0 #(+ <Self as #include_traits>::KIND_COUNT)*;
     }
 
     impl<N: #crate_path::Net> #crate_path::Interactions<N> for #ty_name {
@@ -244,25 +263,56 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
       fn reduce(
         &self,
         net: &mut N,
+        a: (#crate_path::Kind, #crate_path::Addr),
+        b: (#crate_path::Kind, #crate_path::Addr),
+      ) -> bool {
+        #(#include_traits::reduce(self, net, a, b) ||)*
+        #trait_name::reduce(self, net, a, b)
+      }
+    }
+
+    #[allow(non_upper_case_globals, non_snake_case)]
+    #ty_vis trait #trait_name: #(#include_traits),* {
+      const KIND_START: u32;
+      const KIND_COUNT: u32 = #kind_count;
+      #(#struct_defs)*
+      #(#fn_defs)*
+      #[inline(always)]
+      fn reduce<N: #crate_path::Net>(
+        &self,
+        net: &mut N,
         (a_kind, a_addr): (#crate_path::Kind, #crate_path::Addr),
         (b_kind, b_addr): (#crate_path::Kind, #crate_path::Addr),
-      ) {
+      ) -> bool {
         match (a_kind, b_kind) {
           #(#rules)*
-          _ => unimplemented!("{:?}, {:?}", a_kind, b_kind),
+          _ => return false,
         }
+        true
       }
     }
   )
   .into()
 }
 
-fn destructure_agent(crate_path: &Path, addr: TokenStream, agent: &ImplAgent) -> TokenStream {
+fn destructure_agent(
+  crate_path: &TokenStream,
+  addr: TokenStream,
+  agent: &ImplAgent,
+) -> TokenStream {
   let links = (1..=agent.aux.len() as i32)
     .map(|i| quote!(#crate_path::LinkHalf::From(#addr + #crate_path::Delta::of(#i))))
     .collect::<Vec<_>>();
   let binds = bind_ports(&agent.aux, quote!([#(#links),*]));
   binds
+}
+
+fn make_trait_name(ty_name: &Ident) -> Ident {
+  format_ident!("Use{}", ty_name)
+}
+
+fn make_payload_ident(struct_name: &Ident) -> Ident {
+  format_ident!("{}_read_payload", struct_name)
 }
 
 fn make_kind_ident(struct_name: &Ident) -> Ident {
@@ -327,7 +377,11 @@ fn link_edge_idents<'a, I: Iterator<Item = &'a Ident>>(idents: I) -> TokenStream
   quote!(#(#links)*)
 }
 
-fn quote_net_agent(ty_name: &Ident, agent: &NetAgent) -> TokenStream {
+fn quote_net_agent(
+  traits: &BTreeMap<Option<&Ident>, TokenStream>,
+  agent: &NetAgent,
+) -> TokenStream {
+  let src = &traits[&agent.src.as_ref()];
   let name = &agent.name;
   let payload_arg = agent
     .payload
@@ -337,7 +391,10 @@ fn quote_net_agent(ty_name: &Ident, agent: &NetAgent) -> TokenStream {
       quote!(#expr)
     })
     .unwrap_or(quote!());
-  bind_ports(&agent.ports, quote!(#ty_name::#name(net, #payload_arg)))
+  bind_ports(
+    &agent.ports,
+    quote!(<Self as #src>::#name(net, #payload_arg)),
+  )
 }
 
 fn bind_ports(ports: &Vec<Ident>, source: TokenStream) -> TokenStream {

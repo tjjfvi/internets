@@ -1,61 +1,44 @@
 use internets_nets::*;
 
+mod stdlib;
+
 interactions! {
   type FibLin;
 
-  struct U64(+U64, $u64);
-
-  struct Add(-U64, -U64, +U64);
-  struct AddX(-U64, +U64, $u64);
-
-  struct Clone(-U64, +U64, +U64);
-  struct Erase(-U64);
-
-  impl Add(_, i, o) for U64(_, $n) { AddX(i, o, $n) }
-  impl AddX(_, o, $x) for U64(_, $y) { U64(o, $(x.wrapping_add(y))) }
-
-  impl Clone(_, o1, o2) for U64(_, $n) {
-    U64(o1, $n)
-    U64(o2, $n)
-  }
-  impl Erase(_) for U64(_, $_) {}
+  use stdlib::Std;
 
   struct Fib(-U64, +U64);
 
-  impl Fib(_, o) for U64(_, $0) {
-    U64(o, $0)
+  impl Fib(_, o) for Std::U64(_, $0) {
+    Std::U64(o, $0)
   }
-  impl Fib(_, o) for U64(_, $n) {
+  impl Fib(_, o) for Std::U64(_, $n) {
     FibX(n, x, y, o)
-    U64(n, $n-1)
-    U64(x, $0)
-    U64(y, $1)
+    Std::U64(n, $n-1)
+    Std::U64(x, $0)
+    Std::U64(y, $1)
   }
 
   struct FibX(-U64, -U64, -U64, +U64);
 
-  impl FibX(_, x, y, y) for U64(_, $0) {
-    Erase(x)
+  impl FibX(_, x, y, y) for Std::U64(_, $0) {
+    Std::Erase(x)
   }
-  impl FibX(_, x, y, o) for U64(_, $n) {
-    Clone(y, y0, y1)
-    Add(x, y0, z)
+  impl FibX(_, x, y, o) for Std::U64(_, $n) {
+    Std::Clone(y, y0, y1)
+    Std::Add(x, y0, z)
     FibX(n1, y1, z, o)
-    U64(n1, $(n-1))
+    Std::U64(n1, $n-1)
   }
-
-  struct Print(-U64);
-
-  impl Print(_) for U64(_, $n) if { println!("{}", n); true } {}
-  impl Print(_) for U64(_, $_) {}
 
   fn main(n){
     Fib(n, o)
-    Print(o)
+    Std::Print(o)
   }
 }
 
 fn main() {
+  use stdlib::UseStd;
   let args: Vec<_> = std::env::args().collect();
   let n = args.get(1).map(|x| x.parse().unwrap()).unwrap_or(64);
   let mut stats = Stats::default();
