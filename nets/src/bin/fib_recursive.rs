@@ -24,12 +24,7 @@ interactions! {
   impl Print(_) for U64(_, $_) {}
 
   struct Fib(-U64,+U64);
-  impl Fib(_, o) for U64(_, $n) if ( n == 0 ) {
-    U64(o, $0)
-  }
-  impl Fib(_, o) for U64(_, $n) if ( n == 1 ) {
-    U64(o, $1)
-  }
+  impl Fib(_, o) for U64(_, $n @ (0|1)){ U64(o, $n) }
   impl Fib(_, o) for U64(_, $n) {
     Add(f1,f2,o)
     Fib(n1,f1)
