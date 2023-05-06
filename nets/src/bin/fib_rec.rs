@@ -1,4 +1,4 @@
-use std::thread;
+use std::thread::{self, Builder};
 
 use internets_nets::*;
 
@@ -32,30 +32,36 @@ fn main() {
   use stdlib::UseStd;
   let args: Vec<_> = std::env::args().collect();
   let n = args.get(1).map(|x| x.parse().unwrap()).unwrap_or(40);
-  let alloc = BumpAlloc::new(ArrayBuffer::new(1 << 28));
-  let work = Pool::default();
-  let mut net = BasicNet::new(&alloc, work.as_ref());
+  let buffer = ArrayBuffer::new(1 << 28);
+  let threads = 8;
+  let alloc = SplitAlloc::new(&buffer, threads);
+  let work = Steal::new(threads, 1 << 20);
+  let mut net = BasicNet::new(&alloc[0], work.as_ref(0));
   let [a] = FibRec::U64(&mut net, n);
   let [b] = FibRec::main(&mut net);
   net.link(a, b);
-  thread::scope(|s| {
-    let threads = (0..8)
-      .map(|_| {
-        let mut net = std::mem::replace(&mut net, BasicNet::new(&alloc, work.as_ref()));
-        s.spawn(move || {
-          let mut stats = Stats::default();
-          reduce_with_stats(&mut net, &FibRec, &mut stats);
-          stats
-        })
+  let stats = thread::scope(|s| {
+    let threads = (0..threads)
+      .map(|i| {
+        let mut net = BasicNet::new(&alloc[i], work.as_ref(i));
+        Builder::new()
+          .name(format!("worker_{}", i))
+          .spawn_scoped(s, move || {
+            let mut stats = Stats::default();
+            reduce_with_stats(&mut net, &FibRec, &mut stats);
+            stats
+          })
+          .unwrap()
       })
       .collect::<Vec<_>>();
-    drop(net);
     let stats = threads
       .into_iter()
       .map(|t| t.join().unwrap())
       .collect::<Vec<_>>();
-    for (i, stats) in stats.iter().enumerate() {
-      println!("{i}: {stats}");
-    }
+    stats
   });
+  // dbg!(work);
+  for (i, stats) in stats.iter().enumerate() {
+    println!("{i}: {stats}");
+  }
 }

@@ -1,5 +1,7 @@
 mod pool;
+mod steal;
 pub use pool::*;
+pub use steal::*;
 
 use crate::*;
 use std::fmt::Debug;

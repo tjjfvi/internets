@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "cache-padded"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1db59621ec70f09c5e9b597b220c7a2b43611f4710dc03ceb8748637775692c"
+
+[[package]]
 name = "internets-interactions-macro"
 version = "0.1.0"
 dependencies = [
@@ -16,6 +22,7 @@ dependencies = [
 name = "internets-nets"
 version = "0.1.0"
 dependencies = [
+ "cache-padded",
  "internets-interactions-macro",
 ]
 
