@@ -1,6 +1,7 @@
 use crate::*;
 use std::{
   fmt::{Debug, Display},
+  sync::atomic::{fence, Ordering},
   time::{Duration, Instant},
 };
 
@@ -15,6 +16,7 @@ pub struct BasicNet<M: Alloc> {
   pub active: Vec<ActivePair>,
 }
 
+#[derive(Clone, Copy)]
 pub enum LinkHalf {
   From(Addr),
   Kind(Kind),
@@ -24,16 +26,21 @@ pub enum LinkHalf {
 impl<M: Alloc> DelegateAlloc for BasicNet<M> {
   type Alloc = M;
   #[inline(always)]
-  fn delegatee_alloc(&self) -> &Self::Alloc {
+  fn alloc(&self) -> &Self::Alloc {
     &self.mem
   }
   #[inline(always)]
-  fn delegatee_alloc_mut(&mut self) -> &mut Self::Alloc {
+  fn alloc_mut(&mut self) -> &mut Self::Alloc {
     &mut self.mem
   }
 }
 
 impl<M: Alloc> Net for BasicNet<M> {
+  // #[inline(always)]
+  // fn link(&mut self, a: LinkHalf, b: LinkHalf) {
+  //   self.link(a, b)
+  // }
+
   #[inline(always)]
   fn link(&mut self, a: LinkHalf, b: LinkHalf) {
     let a = self.get_link_half(a);
@@ -79,7 +86,7 @@ impl<M: Alloc> BasicNet<M> {
   fn get_link_half(&self, link_half: LinkHalf) -> LinkHalf {
     match link_half {
       LinkHalf::From(addr) => {
-        let word = self.word(addr);
+        let word = self.read_word(addr);
         match word.mode() {
           WordMode::Kind => LinkHalf::Kind(word.as_kind()),
           WordMode::Port(mode) => LinkHalf::Port(addr + word.as_port(), mode),
@@ -90,17 +97,120 @@ impl<M: Alloc> BasicNet<M> {
     }
   }
 
+  #[inline(always)]
+  fn match_link<T>(
+    &mut self,
+    a: LinkHalf,
+    aux_new: impl Fn(Addr) -> Word,
+    aux_cont: impl Fn(&mut Self, Addr) -> T,
+    prn: impl Fn(&mut Self, Addr) -> T,
+    nil: impl Fn(&mut Self, Kind) -> T,
+  ) -> T {
+    let a = match a {
+      LinkHalf::Kind(kind) => return nil(self, kind),
+      LinkHalf::Port(a, PortMode::Principal) => return prn(self, a),
+      LinkHalf::Port(a, PortMode::Auxiliary) => {
+        let word = aux_new(a);
+        if word.0 != 0 {
+          self.word(a).write(word, Ordering::Relaxed);
+        }
+        return aux_cont(self, a);
+      }
+      LinkHalf::From(a) => a,
+    };
+    self._match_link(a, aux_new, aux_cont, prn, nil)
+  }
+
+  #[inline(never)]
+  fn _match_link<T>(
+    &mut self,
+    a: Addr,
+    aux_new: impl Fn(Addr) -> Word,
+    aux_cont: impl Fn(&mut Self, Addr) -> T,
+    prn: impl Fn(&mut Self, Addr) -> T,
+    nil: impl Fn(&mut Self, Kind) -> T,
+  ) -> T {
+    loop {
+      let a_word = self.word(a).swap(Word::NULL, Ordering::Relaxed);
+      let b = match a_word.mode() {
+        WordMode::Kind => return nil(self, a_word.as_kind()),
+        WordMode::Port(PortMode::Principal) => return prn(self, a + a_word.as_port()),
+        WordMode::Null => {
+          std::hint::spin_loop();
+          continue;
+        }
+        WordMode::Port(PortMode::Auxiliary) => {
+          fence(Ordering::Acquire);
+          a + a_word.as_port()
+        }
+      };
+      match self.word(b).compare_exchange_weak(
+        Word::port(a - b, PortMode::Auxiliary),
+        aux_new(b),
+        Ordering::Release,
+        Ordering::Relaxed,
+      ) {
+        Ok(_) => return aux_cont(self, b),
+        Err(_) => {
+          self.word(a).write(a_word, Ordering::Relaxed);
+          std::hint::spin_loop();
+        }
+      }
+    }
+  }
+
+  #[inline(always)]
+  pub fn link(&mut self, a: LinkHalf, b: LinkHalf) {
+    self.match_link(
+      a,
+      |_| Word::NULL,
+      |slf, a| {
+        slf.match_link(
+          b,
+          |b| Word::port(a - b, PortMode::Auxiliary),
+          |slf, b| {
+            slf
+              .word(a)
+              .write(Word::port(b - a, PortMode::Auxiliary), Ordering::Relaxed)
+          },
+          |slf, b| slf.link_aux_prn(a, b),
+          |slf, b| slf.link_aux_nil(a, b),
+        )
+      },
+      |slf, a| {
+        slf.match_link(
+          b,
+          |b| Word::port(a - b, PortMode::Principal),
+          |_, _| {},
+          |slf, b| slf.link_prn_prn(a, b),
+          |slf, b| slf.link_prn_nil(a, b),
+        )
+      },
+      |slf, a| {
+        slf.match_link(
+          b,
+          |_| Word::kind(a),
+          |_, _| {},
+          |slf, b| slf.link_prn_nil(b, a),
+          |slf, b| slf.link_nil_nil(a, b),
+        )
+      },
+    )
+  }
+
   fn link_aux_aux(&mut self, a: Addr, b: Addr) {
     *self.word_mut(a) = Word::port(b - a, PortMode::Auxiliary);
     *self.word_mut(b) = Word::port(a - b, PortMode::Auxiliary);
   }
 
   fn link_aux_prn(&mut self, a: Addr, b: Addr) {
-    *self.word_mut(a) = Word::port(b - a, PortMode::Principal);
+    self
+      .word(a)
+      .write(Word::port(b - a, PortMode::Principal), Ordering::Relaxed);
   }
 
   fn link_aux_nil(&mut self, a: Addr, b: Kind) {
-    *self.word_mut(a) = Word::kind(b)
+    self.word(a).write(Word::kind(b), Ordering::Relaxed)
   }
 
   fn link_prn_prn(&mut self, a: Addr, b: Addr) {
@@ -127,7 +237,7 @@ impl<M: Alloc> BasicNet<M> {
       WordMode::Kind => (word.as_kind(), Addr::NULL),
       WordMode::Port(PortMode::Principal) => {
         let addr = self.origin() + word.as_port();
-        (self.word(addr).as_kind(), addr)
+        (self.read_word(addr).as_kind(), addr)
       }
       _ => fail!(unreachable!()),
     }
@@ -144,6 +254,37 @@ impl<M: Alloc> BasicNet<M> {
     }
   }
 }
+
+/*
+
+loop {
+  b = a.swap(NULL, Acquire)
+  if b.c_e_w(a, n, Release, Relaxed) {
+    n.store(b, Relaxed)
+    break;
+  } else {
+    a.store(b, Relaxed)
+    continue;
+  }
+}
+
+ */
+
+/*
+
+loop {
+  x = a.swap(NULL, Acquire)
+  if x.c_e_w(a, NULL, Relaxed, Relaxed) {
+    break;
+  } else {
+    a.store(x, Relaxed)
+    continue;
+  }
+}
+
+
+
+*/
 
 #[derive(Debug)]
 pub struct ActivePair(pub(super) Word, pub(super) Word);

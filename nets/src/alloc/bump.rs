@@ -1,27 +1,24 @@
 use crate::*;
 
 #[derive(Debug)]
-pub struct BumpAlloc<B: BufferMut> {
+pub struct BumpAlloc<B: Buffer> {
   buffer: B,
   alloc: Addr,
 }
 
-impl<B: BufferMut> DelegateBuffer for BumpAlloc<B> {
+impl<B: Buffer> DelegateBuffer for BumpAlloc<B> {
   type Buffer = B;
   #[inline(always)]
-  fn delegatee_buffer(&self) -> &Self::Buffer {
+  fn buffer(&self) -> &Self::Buffer {
     &self.buffer
   }
-}
-
-impl<B: BufferMut> DelegateBufferMut for BumpAlloc<B> {
   #[inline(always)]
-  fn delegatee_buffer_mut(&mut self) -> &mut Self::Buffer {
+  fn buffer_mut(&mut self) -> &mut Self::Buffer {
     &mut self.buffer
   }
 }
 
-impl<B: BufferMut> Alloc for BumpAlloc<B> {
+impl<B: Buffer> Alloc for BumpAlloc<B> {
   #[inline(always)]
   fn alloc(&mut self, len: Length) -> Addr {
     let addr = self.alloc;
@@ -40,7 +37,7 @@ impl<B: BufferMut> Alloc for BumpAlloc<B> {
   }
 }
 
-impl<B: BufferMut> BumpAlloc<B> {
+impl<B: Buffer> BumpAlloc<B> {
   pub fn new(buffer: B) -> Self {
     let alloc = buffer.origin();
     BumpAlloc { buffer, alloc }

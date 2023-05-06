@@ -2,10 +2,10 @@ use crate::*;
 use std::ops::{Add, Sub};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Addr(pub(super) *mut Word);
+pub struct Addr(pub(super) *const AtomicWord);
 
 impl Addr {
-  pub const NULL: Addr = Addr(0 as *mut Word);
+  pub const NULL: Addr = Addr(0 as *const AtomicWord);
   #[inline(always)]
   pub fn is_null(&self) -> bool {
     self.0 as usize == 0
@@ -16,7 +16,7 @@ impl Add<Delta> for Addr {
   type Output = Addr;
   #[inline(always)]
   fn add(self, delta: Delta) -> Self::Output {
-    Addr(((self.0 as isize) + (delta.offset_bytes as isize)) as *mut Word)
+    Addr((self.0 as *const u8).wrapping_offset(delta.offset_bytes as isize) as *const AtomicWord)
   }
 }
 
@@ -24,7 +24,7 @@ impl Add<Length> for Addr {
   type Output = Addr;
   #[inline(always)]
   fn add(self, len: Length) -> Self::Output {
-    Addr(((self.0 as usize) + (len.length_bytes as usize)) as *mut Word)
+    Addr((self.0 as *const u8).wrapping_offset(len.length_bytes as isize) as *const AtomicWord)
   }
 }
 

@@ -3,32 +3,29 @@ use crate::*;
 const MIN_DLL_LEN: Length = Length::of(3);
 
 #[derive(Debug)]
-pub struct RingAlloc<B: BufferMut> {
+pub struct RingAlloc<B: Buffer> {
   buffer: B,
   alloc: Addr,
 }
 
-impl<B: BufferMut> DelegateBuffer for RingAlloc<B> {
+impl<B: Buffer> DelegateBuffer for RingAlloc<B> {
   type Buffer = B;
   #[inline(always)]
-  fn delegatee_buffer(&self) -> &Self::Buffer {
+  fn buffer(&self) -> &Self::Buffer {
     &self.buffer
   }
-}
-
-impl<B: BufferMut> DelegateBufferMut for RingAlloc<B> {
   #[inline(always)]
-  fn delegatee_buffer_mut(&mut self) -> &mut Self::Buffer {
+  fn buffer_mut(&mut self) -> &mut Self::Buffer {
     &mut self.buffer
   }
 }
 
-impl<B: BufferMut> Alloc for RingAlloc<B> {
+impl<B: Buffer> Alloc for RingAlloc<B> {
   fn alloc(&mut self, len: Length) -> Addr {
     let initial = self.alloc;
     loop {
       let addr = self.alloc;
-      let mut free_len = self.word(addr).as_null_len();
+      let mut free_len = self.read_word(addr).as_null_len();
       debug_assert!(free_len.non_zero());
       while let Some((len_inc, prev_next)) = self.dll_try_read(addr + free_len) {
         if prev_next.is_some() {
@@ -74,7 +71,7 @@ impl<B: BufferMut> Alloc for RingAlloc<B> {
       self.slice_mut(addr, len).fill(Word::NULL);
     }
     let next = self.alloc;
-    let prev = next + self.word(next + Delta::of(1)).as_null_delta();
+    let prev = next + self.read_word(next + Delta::of(1)).as_null_delta();
     *self.word_mut(addr) = Word::null_len(len);
     if len >= MIN_DLL_LEN {
       self.dll_link(prev, addr);
@@ -84,7 +81,7 @@ impl<B: BufferMut> Alloc for RingAlloc<B> {
   }
 }
 
-impl<B: BufferMut> RingAlloc<B> {
+impl<B: Buffer> RingAlloc<B> {
   pub fn new(mut buffer: B) -> Self {
     safe! { assert!(buffer.len() > Length::of(0)) };
     let alloc_addr = buffer.origin();
@@ -104,8 +101,8 @@ impl<B: BufferMut> RingAlloc<B> {
 
   fn dll_read_prev_next(&mut self, addr: Addr) -> (Addr, Addr) {
     (
-      addr + self.word(addr + Delta::of(1)).as_null_delta(),
-      addr + self.word(addr + Delta::of(2)).as_null_delta(),
+      addr + self.read_word(addr + Delta::of(1)).as_null_delta(),
+      addr + self.read_word(addr + Delta::of(2)).as_null_delta(),
     )
   }
 
@@ -113,7 +110,7 @@ impl<B: BufferMut> RingAlloc<B> {
     if (addr.0 as usize) >= self.buffer_bounds().end.0 as usize {
       return None;
     }
-    let word = self.word(addr);
+    let word = self.read_word(addr);
     if word.mode() != WordMode::Null {
       return None;
     }

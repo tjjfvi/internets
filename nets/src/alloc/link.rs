@@ -1,28 +1,25 @@
 use crate::*;
 
 #[derive(Debug)]
-pub struct LinkAlloc<B: BufferMut> {
+pub struct LinkAlloc<B: Buffer> {
   pub buffer: B,
   allocs: Vec<Addr>,
   pub end: Addr,
 }
 
-impl<B: BufferMut> DelegateBuffer for LinkAlloc<B> {
+impl<B: Buffer> DelegateBuffer for LinkAlloc<B> {
   type Buffer = B;
   #[inline(always)]
-  fn delegatee_buffer(&self) -> &Self::Buffer {
+  fn buffer(&self) -> &Self::Buffer {
     &self.buffer
   }
-}
-
-impl<B: BufferMut> DelegateBufferMut for LinkAlloc<B> {
   #[inline(always)]
-  fn delegatee_buffer_mut(&mut self) -> &mut Self::Buffer {
+  fn buffer_mut(&mut self) -> &mut Self::Buffer {
     &mut self.buffer
   }
 }
 
-impl<B: BufferMut> Alloc for LinkAlloc<B> {
+impl<B: Buffer> Alloc for LinkAlloc<B> {
   #[inline(always)]
   fn alloc(&mut self, len: Length) -> Addr {
     let alloc = self.get_alloc(len);
@@ -53,7 +50,7 @@ impl<B: BufferMut> Alloc for LinkAlloc<B> {
   }
 }
 
-impl<B: BufferMut> LinkAlloc<B> {
+impl<B: Buffer> LinkAlloc<B> {
   pub fn new(buffer: B) -> Self {
     safe! { assert!(buffer.len() > Length::of(0)) };
     let alloc_addr = buffer.origin();

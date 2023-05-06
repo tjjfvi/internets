@@ -119,7 +119,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
             #crate_path::Buffer::read_payload::<#ty>(net, addr + #self_as_trait::#arity_ident)
           }),
         quote!(payload: #ty),
-        quote!(#crate_path::BufferMut::write_payload::<#ty>(net, chunk + #self_as_trait::#arity_ident, payload);),
+        quote!(#crate_path::Buffer::write_payload::<#ty>(net, chunk + #self_as_trait::#arity_ident, payload);),
         )
       }).unwrap_or((quote!(
         fn #payload_ident<N: #crate_path::Net>(_: &mut N, _: #crate_path::Addr) {}
@@ -134,7 +134,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
           -> [#crate_path::LinkHalf; #arity_usize]
         {
           let chunk = #crate_path::Alloc::alloc(net, #self_as_trait::#len_ident);
-          *#crate_path::BufferMut::word_mut(net, chunk) = #crate_path::Word::kind(#self_as_trait::#kind_ident);
+          *#crate_path::Buffer::word_mut(net, chunk) = #crate_path::Word::kind(#self_as_trait::#kind_ident);
           #payload_set
           [#(#ports),*]
         }
