@@ -9,31 +9,31 @@ interactions! {
 
   struct Fib(-U64, +U64);
 
-  impl Fib(_, o) for Std::U64(_, $0) {
-    Std::U64(o, $0)
+  impl Fib(_, o) for U64(_, $0) {
+    U64(o, $0)
   }
-  impl Fib(_, o) for Std::U64(_, $n) {
+  impl Fib(_, o) for U64(_, $n) {
     FibX(n, x, y, o)
-    Std::U64(n, $n-1)
-    Std::U64(x, $0)
-    Std::U64(y, $1)
+    U64(n, $n-1)
+    U64(x, $0)
+    U64(y, $1)
   }
 
   struct FibX(-U64, -U64, -U64, +U64);
 
-  impl FibX(_, x, y, y) for Std::U64(_, $0) {
-    Std::Erase(x)
+  impl FibX(_, x, y, y) for U64(_, $0) {
+    Erase(x)
   }
-  impl FibX(_, x, y, o) for Std::U64(_, $n) {
-    Std::Clone(y, y0, y1)
-    Std::Add(x, y0, z)
+  impl FibX(_, x, y, o) for U64(_, $n) {
+    Clone(y, y0, y1)
+    Add(x, y0, z)
     FibX(n1, y1, z, o)
-    Std::U64(n1, $n-1)
+    U64(n1, $n-1)
   }
 
   fn main(n){
     Fib(n, o)
-    Std::Print(o)
+    Print(o)
   }
 }
 

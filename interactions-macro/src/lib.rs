@@ -2,11 +2,11 @@ mod parser;
 use parser::*;
 
 use proc_macro::TokenStream as TokenStream1;
-use proc_macro2::TokenStream;
-use proc_macro_error::{abort, proc_macro_error};
-use quote::{format_ident, quote, ToTokens};
+use proc_macro2::{Span, TokenStream};
+use proc_macro_error::{abort, emit_error, proc_macro_error};
+use quote::{format_ident, quote, quote_spanned, ToTokens};
 use std::collections::{BTreeMap, BTreeSet};
-use syn::{parse_macro_input, Ident};
+use syn::{spanned::Spanned, Ident};
 
 #[proc_macro_error]
 #[proc_macro]
@@ -14,8 +14,13 @@ pub fn interactions(input: TokenStream1) -> TokenStream1 {
   _interactions(input.into()).into()
 }
 
-fn _interactions(input: TokenStream1) -> TokenStream1 {
-  let input = parse_macro_input!(input as Input);
+fn _interactions(input: TokenStream1) -> TokenStream {
+  let input = match syn::parse::<Input>(input) {
+    Ok(data) => data,
+    Err(err) => {
+      return TokenStream::from(err.to_compile_error());
+    }
+  };
 
   let crate_path = &quote!(::internets_nets);
 
@@ -41,10 +46,9 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
   let ty_vis = &input.vis;
   let self_as_trait = quote!(<Self as #trait_name>);
 
-  let mut traits = BTreeMap::new();
-  traits.insert(None, quote!(#trait_name));
-  let mut include_impls = vec![];
-  let mut include_traits = vec![];
+  let mut impls = vec![];
+  let mut traits = vec![];
+  let mut includes = vec![quote!(#[allow(unused)] use #trait_name as #ty_name;)];
   for u in input.items.iter().filter_map(Item::as_use) {
     let path = &u.path;
     let use_ty_name = &path.segments.last().unwrap().ident;
@@ -54,13 +58,17 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
       let segments = path.segments.iter().rev().skip(1).rev().collect::<Vec<_>>();
       quote!(#leading #(#segments::)* #trait_name)
     };
-    include_impls.push(quote!(
+    impls.push(quote!(
       impl #path for #ty_name {
-        const KIND_START: u32 = 0 #(+ <Self as #include_traits>::KIND_COUNT)*;
+        const KIND_START: u32 = 0 #(+ <Self as #traits>::KIND_COUNT)*;
       }
     ));
-    traits.insert(Some(use_ty_name), quote!(#path));
-    include_traits.push(path);
+    let span = path.span();
+    includes.push(quote_spanned!(span=>
+      #[allow(unused)]
+      use #path as #use_ty_name;
+    ));
+    traits.push(path);
   }
 
   let struct_defs = input
@@ -147,7 +155,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
       .net
       .agents
       .iter()
-      .map(|x| quote_net_agent(&traits, x))
+      .map(|x| quote_net_agent(x))
       .collect::<Vec<_>>();
     let decls = declare_edge_idents(f.all_idents());
     let links = link_edge_idents(f.all_idents().filter(|x| !f.inputs.contains(x)));
@@ -165,6 +173,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
       fn #name<N: #crate_path::Net>(net: &mut N)
         -> [#crate_path::LinkHalf; #arity_usize]
       {
+        #(#includes)*
         #decls
         #(#agents)*
         #links
@@ -183,8 +192,8 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
   }))
   .into_iter()
   .map(|((a_src, a_name, b_src, b_name), arms)| {
-    let a_src = &traits[&a_src.as_ref()];
-    let b_src = &traits[&b_src.as_ref()];
+    let a_src = quote_src(&a_src);
+    let b_src = quote_src(&b_src);
     let a_kind = make_kind_ident(a_name);
     let b_kind = make_kind_ident(b_name);
     let a_len = make_len_ident(a_name);
@@ -194,6 +203,10 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
     let arms = arms
       .into_iter()
       .map(|(a, b, i)| {
+        let a_src = quote_src(&a.src);
+        let b_src = quote_src(&b.src);
+        let a_name = &a.name;
+        let b_name = &b.name;
         let a_pat = a
           .payload
           .as_ref()
@@ -210,13 +223,16 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
           .net
           .agents
           .iter()
-          .map(|x| quote_net_agent(&traits, x))
+          .map(|x| quote_net_agent(x))
           .collect::<Vec<_>>();
         let decls = declare_edge_idents(i.all_idents());
         let links = link_edge_idents(i.all_idents());
         let cond = i.cond.as_ref().map(|x| quote!(if #x)).unwrap_or(quote!());
-        quote!(
+        let span = i.imp.span;
+        quote_spanned!(span=>
           (#a_pat, #b_pat) #cond => {
+            let _ = #a_src::#a_name::<N>;
+            let _ = #b_src::#b_name::<N>;
             #decls
             #a_binds
             #b_binds
@@ -226,21 +242,21 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
         )
       })
       .collect::<Vec<_>>();
-    let a_kind_path = quote!(<Self as #a_src>::#a_kind);
-    let b_kind_path = quote!(<Self as #b_src>::#b_kind);
+    let a_kind_path = quote!(#a_src::#a_kind);
+    let b_kind_path = quote!(#b_src::#b_kind);
     quote!(
       x if (#a_kind_path <= #b_kind_path) && x == (#a_kind_path, #b_kind_path) => {
         match (
-          <Self as #a_src>::#a_payload(net, a_addr),
-          <Self as #b_src>::#b_payload(net, b_addr),
+          #a_src::#a_payload(net, a_addr),
+          #b_src::#b_payload(net, b_addr),
         ) {
           #(#arms),*
         }
-        if <Self as #a_src>::#a_len.non_zero() {
-          #crate_path::Alloc::free(net, a_addr, <Self as #a_src>::#a_len);
+        if #a_src::#a_len.non_zero() {
+          #crate_path::Alloc::free(net, a_addr, #a_src::#a_len);
         }
-        if <Self as #b_src>::#b_len.non_zero() {
-          #crate_path::Alloc::free(net, b_addr, <Self as #b_src>::#b_len);
+        if #b_src::#b_len.non_zero() {
+          #crate_path::Alloc::free(net, b_addr, #b_src::#b_len);
         }
       }
     )
@@ -252,10 +268,10 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
   quote!(
     #ty_vis struct #ty_name;
 
-    #(#include_impls)*
+    #(#impls)*
 
     impl #trait_name for #ty_name {
-      const KIND_START: u32 = 0 #(+ <Self as #include_traits>::KIND_COUNT)*;
+      const KIND_START: u32 = 0 #(+ <Self as #traits>::KIND_COUNT)*;
     }
 
     impl<N: #crate_path::Net> #crate_path::Interactions<N> for #ty_name {
@@ -266,13 +282,13 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
         a: (#crate_path::Kind, #crate_path::Addr),
         b: (#crate_path::Kind, #crate_path::Addr),
       ) -> bool {
-        #(#include_traits::reduce(self, net, a, b) ||)*
+        #(#traits::reduce(self, net, a, b) ||)*
         #trait_name::reduce(self, net, a, b)
       }
     }
 
     #[allow(non_upper_case_globals, non_snake_case)]
-    #ty_vis trait #trait_name: #(#include_traits),* {
+    #ty_vis trait #trait_name: #(#traits),* {
       const KIND_START: u32;
       const KIND_COUNT: u32 = #kind_count;
       #(#struct_defs)*
@@ -284,6 +300,7 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
         (a_kind, a_addr): (#crate_path::Kind, #crate_path::Addr),
         (b_kind, b_addr): (#crate_path::Kind, #crate_path::Addr),
       ) -> bool {
+        #(#includes)*
         match (a_kind, b_kind) {
           #(#rules)*
           _ => return false,
@@ -292,7 +309,13 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
       }
     }
   )
-  .into()
+}
+
+fn quote_src(src: &Option<Ident>) -> TokenStream {
+  src
+    .as_ref()
+    .map(|trait_name| quote_spanned!(trait_name.span()=> <Self as #trait_name>))
+    .unwrap_or(quote!(Self))
 }
 
 fn destructure_agent(
@@ -303,7 +326,7 @@ fn destructure_agent(
   let links = (1..=agent.aux.len() as i32)
     .map(|i| quote!(#crate_path::LinkHalf::From(#addr + #crate_path::Delta::of(#i))))
     .collect::<Vec<_>>();
-  let binds = bind_ports(&agent.aux, quote!([#(#links),*]));
+  let binds = bind_ports(agent.name.span(), &agent.aux, quote!([#(#links),*]));
   binds
 }
 
@@ -312,19 +335,19 @@ fn make_trait_name(ty_name: &Ident) -> Ident {
 }
 
 fn make_payload_ident(struct_name: &Ident) -> Ident {
-  format_ident!("{}_read_payload", struct_name)
+  format_ident!("{}_read_payload", struct_name, span = Span::mixed_site())
 }
 
 fn make_kind_ident(struct_name: &Ident) -> Ident {
-  format_ident!("{}_KIND", struct_name)
+  format_ident!("{}_KIND", struct_name, span = Span::mixed_site())
 }
 
 fn make_arity_ident(struct_name: &Ident) -> Ident {
-  format_ident!("{}_ARITY", struct_name)
+  format_ident!("{}_ARITY", struct_name, span = Span::mixed_site())
 }
 
 fn make_len_ident(struct_name: &Ident) -> Ident {
-  format_ident!("{}_LEN", struct_name)
+  format_ident!("{}_LEN", struct_name, span = Span::mixed_site())
 }
 
 fn ensure_unique<'a, I: Iterator<Item = &'a Ident>>(idents: I) {
@@ -342,14 +365,14 @@ fn ensure_used_twice<'a, I: Iterator<Item = &'a Ident>>(idents: I) {
   for ident in idents {
     if !all.insert(ident) {
       if !once.remove(ident) {
-        abort!(ident.span(), "identifier used more than twice")
+        emit_error!(ident.span(), "identifier used more than twice");
       }
     } else {
       once.insert(ident);
     }
   }
   for ident in once {
-    abort!(ident.span(), "identifier used only once")
+    emit_error!(ident.span(), "identifier used only once");
   }
 }
 
@@ -377,11 +400,8 @@ fn link_edge_idents<'a, I: Iterator<Item = &'a Ident>>(idents: I) -> TokenStream
   quote!(#(#links)*)
 }
 
-fn quote_net_agent(
-  traits: &BTreeMap<Option<&Ident>, TokenStream>,
-  agent: &NetAgent,
-) -> TokenStream {
-  let src = &traits[&agent.src.as_ref()];
+fn quote_net_agent(agent: &NetAgent) -> TokenStream {
+  let src = quote_src(&agent.src);
   let name = &agent.name;
   let payload_arg = agent
     .payload
@@ -392,12 +412,13 @@ fn quote_net_agent(
     })
     .unwrap_or(quote!());
   bind_ports(
+    agent.name.span(),
     &agent.ports,
-    quote!(<Self as #src>::#name(net, #payload_arg)),
+    quote!(#src::#name(net, #payload_arg)),
   )
 }
 
-fn bind_ports(ports: &Vec<Ident>, source: TokenStream) -> TokenStream {
+fn bind_ports(span: Span, ports: &Vec<Ident>, source: TokenStream) -> TokenStream {
   if ports.is_empty() {
     return quote!();
   }
@@ -422,7 +443,7 @@ fn bind_ports(ports: &Vec<Ident>, source: TokenStream) -> TokenStream {
       )
     })
     .collect::<Vec<_>>();
-  quote!(
+  quote_spanned!(span=>
     let [#(#binds),*] = #source;
     #(#shifts)*
   )

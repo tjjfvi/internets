@@ -196,6 +196,7 @@ impl Parse for Net {
 
 #[derive(Debug)]
 pub struct Impl {
+  pub imp: Token![impl],
   pub left: ImplAgent,
   pub right: ImplAgent,
   pub cond: Option<Expr>,
@@ -204,7 +205,7 @@ pub struct Impl {
 
 impl Parse for Impl {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-    let _: Token![impl] = input.parse()?;
+    let imp: Token![impl] = input.parse()?;
     let left: ImplAgent = input.parse()?;
     let _: Token![for] = input.parse()?;
     let right: ImplAgent = input.parse()?;
@@ -218,6 +219,7 @@ impl Parse for Impl {
     };
     let net: Net = input.parse()?;
     Ok(Impl {
+      imp,
       left,
       right,
       cond,

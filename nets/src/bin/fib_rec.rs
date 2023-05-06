@@ -9,20 +9,20 @@ interactions! {
 
   struct Fib(-U64, +U64);
 
-  impl Fib(_, o) for Std::U64(_, $n @ (0 | 1)) {
-    Std::U64(o, $n)
+  impl Fib(_, o) for U64(_, $n @ (0 | 1)) {
+    U64(o, $n)
   }
-  impl Fib(_, o) for Std::U64(_, $n) {
-    Std::U64(a, $n-1)
-    Std::U64(b, $n-2)
+  impl Fib(_, o) for U64(_, $n) {
+    U64(a, $n-1)
+    U64(b, $n-2)
     Fib(a, x)
     Fib(b, y)
-    Std::Add(x, y, o)
+    Add(x, y, o)
   }
 
   fn main(n){
     Fib(n, o)
-    Std::Print(o)
+    Print(o)
   }
 }
 
