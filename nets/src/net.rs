@@ -242,8 +242,12 @@ impl<M: Alloc> BasicNet<M> {
   }
 
   fn link_aux_aux(&mut self, a: Addr, b: Addr) {
-    *self.word_mut(a) = Word::port(b - a, PortMode::Auxiliary);
-    *self.word_mut(b) = Word::port(a - b, PortMode::Auxiliary);
+    self
+      .word(a)
+      .write(Word::port(b - a, PortMode::Auxiliary), Ordering::Relaxed);
+    self
+      .word(b)
+      .write(Word::port(a - b, PortMode::Auxiliary), Ordering::Relaxed);
   }
 
   fn link_aux_prn(&mut self, a: Addr, b: Addr) {
