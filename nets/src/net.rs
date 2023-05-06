@@ -71,7 +71,6 @@ impl<M: Alloc> BasicNet<M> {
     prn: impl Fn(&mut Self, Addr) -> T,
     nil: impl Fn(&mut Self, Kind) -> T,
   ) -> T {
-    // let a = self.get_link_half(a);
     match a {
       LinkHalf::From(a) => self._match_link(a, aux_new, aux_cont, prn, nil),
       LinkHalf::Port(b, PortMode::Auxiliary) => {
@@ -94,63 +93,52 @@ impl<M: Alloc> BasicNet<M> {
     prn: impl Fn(&mut Self, Addr) -> T,
     nil: impl Fn(&mut Self, Kind) -> T,
   ) -> T {
-    loop {
-      let a_word = self.word(a).swap(Word::NULL, Ordering::Relaxed);
-      let b = match a_word.mode() {
+    if cfg!(feature = "threads") {
+      loop {
+        let a_word = self.word(a).swap(Word::NULL, Ordering::Relaxed);
+        let b = match a_word.mode() {
+          WordMode::Kind => return nil(self, a_word.as_kind()),
+          WordMode::Port(PortMode::Principal) => return prn(self, a + a_word.as_port()),
+          WordMode::Null => {
+            std::hint::spin_loop();
+            continue;
+          }
+          WordMode::Port(PortMode::Auxiliary) => {
+            fence(Ordering::Acquire);
+            a + a_word.as_port()
+          }
+        };
+        match self.word(b).compare_exchange_weak(
+          Word::port(a - b, PortMode::Auxiliary),
+          aux_new(b).unwrap_or(Word::NULL),
+          Ordering::Release,
+          Ordering::Relaxed,
+        ) {
+          Ok(_) => return aux_cont(self, b),
+          Err(_) => {
+            self.word(a).write(a_word, Ordering::Relaxed);
+            std::hint::spin_loop();
+          }
+        }
+      }
+    } else {
+      let a_word = self.read_word(a);
+      match a_word.mode() {
         WordMode::Kind => return nil(self, a_word.as_kind()),
         WordMode::Port(PortMode::Principal) => return prn(self, a + a_word.as_port()),
-        WordMode::Null => {
-          std::hint::spin_loop();
-          continue;
-        }
         WordMode::Port(PortMode::Auxiliary) => {
-          fence(Ordering::Acquire);
-          a + a_word.as_port()
+          let b = a + a_word.as_port();
+          if let Some(w) = aux_new(b) {
+            self.word(b).write(w, Ordering::Relaxed);
+          }
+          aux_cont(self, b)
         }
-      };
-      match self.word(b).compare_exchange_weak(
-        Word::port(a - b, PortMode::Auxiliary),
-        aux_new(b).unwrap_or(Word::NULL),
-        Ordering::Release,
-        Ordering::Relaxed,
-      ) {
-        Ok(_) => return aux_cont(self, b),
-        Err(_) => {
-          self.word(a).write(a_word, Ordering::Relaxed);
-          std::hint::spin_loop();
+        WordMode::Null => {
+          fail!(unreachable!());
         }
       }
     }
   }
-
-  // #[inline(always)]
-  // fn _match_link<T>(
-  //   &mut self,
-  //   a: Addr,
-  //   aux_new: impl Fn(Addr) -> Option<Word>,
-  //   aux_cont: impl Fn(&mut Self, Addr) -> T,
-  //   prn: impl Fn(&mut Self, Addr) -> T,
-  //   nil: impl Fn(&mut Self, Kind) -> T,
-  // ) -> T {
-  //   // let a_word = self.word(a).swap(Word::NULL, Ordering::Relaxed);
-  //   // let a_word = self.word(a).read(Ordering::Relaxed);
-  //   let a_word = self.read_word(a);
-  //   match a_word.mode() {
-  //     WordMode::Kind => return nil(self, a_word.as_kind()),
-  //     WordMode::Port(PortMode::Principal) => return prn(self, a + a_word.as_port()),
-  //     WordMode::Port(PortMode::Auxiliary) => {
-  //       // fence(Ordering::Acquire);
-  //       let b = a + a_word.as_port();
-  //       if let Some(w) = aux_new(b) {
-  //         self.word(b).write(w, Ordering::Relaxed);
-  //       }
-  //       aux_cont(self, b)
-  //     }
-  //     WordMode::Null => {
-  //       fail!(unreachable!());
-  //     }
-  //   }
-  // }
 
   #[inline(always)]
   pub fn link(&mut self, a: LinkHalf, b: LinkHalf) {

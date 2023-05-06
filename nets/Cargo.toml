@@ -9,3 +9,4 @@ internets-interactions-macro = { path = "../interactions-macro" }
 [features]
 unsafe = []
 no_oom = []
+threads = []
