@@ -7,6 +7,26 @@ interactions! {
   pub struct False(+Bool);
   pub struct True(+Bool);
 
+  pub struct Not(-Bool, +Bool);
+  pub struct And(-Bool, -Bool, +Bool);
+  pub struct Or(-Bool, -Bool, +Bool);
+  pub struct Xor(-Bool, -Bool, +Bool);
+
+  impl Not(_,o) for False(_){ True(o) }
+  impl Not(_,o) for True(_){ False(o) }
+  impl And(_,b,b) for True(_){}
+  impl And(_,b,f) for False(_){
+    Erase(b)
+    False(f)
+  }
+  impl Or(_,b,b) for False(_){}
+  impl Or(_,b,f) for True(_){
+    Erase(b)
+    True(f)
+  }
+  impl Xor(_,b,o) for True(_){ Not(b,o) }
+  impl Xor(_,b,b) for False(_){}
+
   pub struct U64(+U64, $u64);
 
   pub struct Add(-U64, -U64, +U64);
@@ -65,11 +85,23 @@ interactions! {
   }
   impl Erase(_) for U64(_, $_) {}
 
-  pub struct Print(-U64);
+  // Printable = U64 | Bool
+  pub struct Print(-Printable);
 
   impl Print(_) for U64(_, $n) {
     side_effect(${
       println!("{}", n)
+    })
+  }
+
+  impl Print(_) for True(_) {
+    side_effect(${
+      println!("{}", true)
+    })
+  }
+  impl Print(_) for False(_) {
+    side_effect(${
+      println!("{}", false)
     })
   }
 
