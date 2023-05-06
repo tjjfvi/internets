@@ -119,7 +119,6 @@ impl Word {
 
 #[derive(Debug)]
 pub struct AtomicWord(pub AtomicU32);
-
 impl AtomicWord {
   #[inline(always)]
   pub fn new(&self, value: Word) -> AtomicWord {
@@ -157,7 +156,6 @@ impl AtomicWord {
 
 // #[derive(Debug)]
 // pub struct AtomicWord(Word);
-
 // impl AtomicWord {
 //   #[inline(always)]
 //   pub fn new(&self, value: Word) -> AtomicWord {
