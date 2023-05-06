@@ -250,6 +250,7 @@ impl<M: Alloc> BasicNet<M> {
     )
   }
 
+  #[inline(always)]
   fn link_aux_aux(&mut self, a: Addr, b: Addr) {
     self
       .word(a)
@@ -259,16 +260,19 @@ impl<M: Alloc> BasicNet<M> {
       .write(Word::port(a - b, PortMode::Auxiliary), Ordering::Relaxed);
   }
 
+  #[inline(always)]
   fn link_aux_prn(&mut self, a: Addr, b: Addr) {
     self
       .word(a)
       .write(Word::port(b - a, PortMode::Principal), Ordering::Relaxed);
   }
 
+  #[inline(always)]
   fn link_aux_nil(&mut self, a: Addr, b: Kind) {
     self.word(a).write(Word::kind(b), Ordering::Relaxed)
   }
 
+  #[inline(always)]
   fn link_prn_prn(&mut self, a: Addr, b: Addr) {
     self.active.push(ActivePair(
       Word::port(a - self.origin(), PortMode::Principal),
@@ -276,6 +280,7 @@ impl<M: Alloc> BasicNet<M> {
     ));
   }
 
+  #[inline(always)]
   fn link_prn_nil(&mut self, a: Addr, b: Kind) {
     self.active.push(ActivePair(
       Word::port(a - self.origin(), PortMode::Principal),
@@ -283,6 +288,7 @@ impl<M: Alloc> BasicNet<M> {
     ));
   }
 
+  #[inline(always)]
   fn link_nil_nil(&mut self, _a: Kind, _b: Kind) {
     // they just annihilate
   }
