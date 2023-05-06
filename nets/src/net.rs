@@ -120,8 +120,8 @@ impl<M: Alloc> BasicNet<M> {
     ));
   }
 
-  fn link_nil_nil(&mut self, _a: Kind, _b: Kind) {
-    // they just annihilate
+  fn link_nil_nil(&mut self, a: Kind, b: Kind) {
+    self.active.push( ActivePair(Word::kind(a), Word::kind(b)))
   }
 
   #[inline(always)]
