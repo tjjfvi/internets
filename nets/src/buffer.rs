@@ -9,16 +9,15 @@ pub trait Buffer: Debug {
   fn assert_valid(&self, addr: Addr, len: Length);
 
   fn read_word(&self, addr: Addr) -> Word;
-  fn word_mut(&mut self, addr: Addr) -> &mut Word;
-  fn word(&mut self, addr: Addr) -> &mut AtomicWord;
+  fn word(&self, addr: Addr) -> &AtomicWord;
 
   fn read_payload<P>(&self, addr: Addr) -> P;
-  fn write_payload<P>(&mut self, addr: Addr, payload: P);
+  fn write_payload<P>(&self, addr: Addr, payload: P);
 
   fn origin(&self) -> Addr;
   fn len(&self) -> Length;
 
-  fn slice_mut(&mut self, addr: Addr, len: Length) -> &mut [Word];
+  fn write_slice(&self, addr: Addr, len: Length, data: &[Word]);
 }
 
 pub trait DelegateBuffer: Debug {
@@ -45,8 +44,8 @@ impl<T: DelegateBuffer> Buffer for T {
     self.buffer().read_payload(addr)
   }
   #[inline(always)]
-  fn word(&mut self, addr: Addr) -> &mut AtomicWord {
-    self.buffer_mut().word(addr)
+  fn word(&self, addr: Addr) -> &AtomicWord {
+    self.buffer().word(addr)
   }
   #[inline(always)]
   fn origin(&self) -> Addr {
@@ -57,15 +56,11 @@ impl<T: DelegateBuffer> Buffer for T {
     self.buffer().len()
   }
   #[inline(always)]
-  fn word_mut(&mut self, addr: Addr) -> &mut Word {
-    self.buffer_mut().word_mut(addr)
+  fn write_payload<P>(&self, addr: Addr, value: P) {
+    self.buffer().write_payload(addr, value)
   }
   #[inline(always)]
-  fn write_payload<P>(&mut self, addr: Addr, value: P) {
-    self.buffer_mut().write_payload(addr, value)
-  }
-  #[inline(always)]
-  fn slice_mut(&mut self, addr: Addr, len: Length) -> &mut [Word] {
-    self.buffer_mut().slice_mut(addr, len)
+  fn write_slice(&self, addr: Addr, len: Length, data: &[Word]) {
+    self.buffer().write_slice(addr, len, data)
   }
 }

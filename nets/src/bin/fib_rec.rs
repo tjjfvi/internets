@@ -31,7 +31,7 @@ fn main() {
   let args: Vec<_> = std::env::args().collect();
   let n = args.get(1).map(|x| x.parse().unwrap()).unwrap_or(40);
   let mut stats = Stats::default();
-  let mut net = BasicNet::new(LinkAlloc::new(ArrayBuffer::new(1 << 20)));
+  let mut net = BasicNet::new(BumpAlloc::new(ArrayBuffer::new(1 << 28)), Vec::new());
   let [a] = FibRec::U64(&mut net, n);
   let [b] = FibRec::main(&mut net);
   net.link(a, b);

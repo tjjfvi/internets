@@ -11,9 +11,9 @@ pub trait Net: Alloc {
 }
 
 #[derive(Debug)]
-pub struct BasicNet<M: Alloc> {
+pub struct BasicNet<M: Alloc, W: Work> {
   pub mem: M,
-  pub active: Vec<ActivePair>,
+  pub work: W,
 }
 
 #[derive(Clone, Copy)]
@@ -23,7 +23,7 @@ pub enum LinkHalf {
   Port(Addr, PortMode),
 }
 
-impl<M: Alloc> DelegateAlloc for BasicNet<M> {
+impl<M: Alloc, W: Work> DelegateAlloc for BasicNet<M, W> {
   type Alloc = M;
   #[inline(always)]
   fn alloc(&self) -> &Self::Alloc {
@@ -35,7 +35,7 @@ impl<M: Alloc> DelegateAlloc for BasicNet<M> {
   }
 }
 
-impl<M: Alloc> Net for BasicNet<M> {
+impl<M: Alloc, W: Work> Net for BasicNet<M, W> {
   #[inline(always)]
   fn link(&mut self, a: LinkHalf, b: LinkHalf) {
     self.link(a, b)
@@ -43,7 +43,7 @@ impl<M: Alloc> Net for BasicNet<M> {
 
   #[inline(always)]
   fn reduce(&mut self, interactions: &impl Interactions<Self>) -> bool {
-    if let Some(pair) = self.active.pop() {
+    if let Some(pair) = self.work.take() {
       let (a, b) = self.resolve_active_pair(pair);
       let did_reduce = interactions.reduce(self, a, b);
       debug_assert!(did_reduce);
@@ -54,12 +54,9 @@ impl<M: Alloc> Net for BasicNet<M> {
   }
 }
 
-impl<M: Alloc> BasicNet<M> {
-  pub fn new(mem: M) -> Self {
-    BasicNet {
-      mem,
-      active: vec![],
-    }
+impl<M: Alloc, W: Work> BasicNet<M, W> {
+  pub fn new(mem: M, work: W) -> Self {
+    BasicNet { mem, work }
   }
 
   #[inline(always)]
@@ -218,7 +215,7 @@ impl<M: Alloc> BasicNet<M> {
 
   #[inline(always)]
   fn link_prn_prn(&mut self, a: Addr, b: Addr) {
-    self.active.push(ActivePair(
+    self.work.add(ActivePair(
       Word::port(a - self.origin(), PortMode::Principal),
       Word::port(b - self.origin(), PortMode::Principal),
     ));
@@ -226,7 +223,7 @@ impl<M: Alloc> BasicNet<M> {
 
   #[inline(always)]
   fn link_prn_nil(&mut self, a: Addr, b: Kind) {
-    self.active.push(ActivePair(
+    self.work.add(ActivePair(
       Word::port(a - self.origin(), PortMode::Principal),
       Word::kind(b),
     ));
@@ -291,9 +288,6 @@ loop {
 
 
 */
-
-#[derive(Debug)]
-pub struct ActivePair(pub(super) Word, pub(super) Word);
 
 pub trait Interactions<N: Net + ?Sized> {
   fn reduce(&self, net: &mut N, a: (Kind, Addr), b: (Kind, Addr)) -> bool;

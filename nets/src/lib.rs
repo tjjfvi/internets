@@ -7,6 +7,7 @@ mod length;
 mod macros;
 mod net;
 mod word;
+mod work;
 
 pub use addr::*;
 pub use alloc::*;
@@ -17,3 +18,4 @@ pub use length::*;
 pub use macros::*;
 pub use net::*;
 pub use word::*;
+pub use work::*;

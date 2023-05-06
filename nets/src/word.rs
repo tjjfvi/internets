@@ -129,16 +129,16 @@ impl AtomicWord {
     Word(self.0.load(order))
   }
   #[inline(always)]
-  pub fn write(&mut self, value: Word, order: Ordering) {
+  pub fn write(&self, value: Word, order: Ordering) {
     self.0.store(value.0, order)
   }
   #[inline(always)]
-  pub fn swap(&mut self, val: Word, order: Ordering) -> Word {
+  pub fn swap(&self, val: Word, order: Ordering) -> Word {
     Word(self.0.swap(val.0, order))
   }
   #[inline(always)]
   pub fn compare_exchange_weak(
-    &mut self,
+    &self,
     current: Word,
     new: Word,
     success: Ordering,

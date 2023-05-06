@@ -134,7 +134,10 @@ fn _interactions(input: TokenStream1) -> TokenStream1 {
           -> [#crate_path::LinkHalf; #arity_usize]
         {
           let chunk = #crate_path::Alloc::alloc(net, #self_as_trait::#len_ident);
-          *#crate_path::Buffer::word_mut(net, chunk) = #crate_path::Word::kind(#self_as_trait::#kind_ident);
+          #crate_path::Buffer::word(net, chunk).write(
+            #crate_path::Word::kind(#self_as_trait::#kind_ident),
+            ::std::sync::atomic::Ordering::Relaxed,
+          );
           #payload_set
           [#(#ports),*]
         }

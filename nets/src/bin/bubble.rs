@@ -389,7 +389,7 @@ impl<N: Net> Interactions<N> for Bubble {
 }
 
 fn main() {
-  let mut net = BasicNet::new(RingAlloc::new(ArrayBuffer::new(1 << 29)));
+  let mut net = BasicNet::new(RingAlloc::new(ArrayBuffer::new(1 << 29)), Vec::new());
   let base = net.alloc_write(&[
     Word::port(Delta::of(2), PortMode::Auxiliary),
     // Word::port(Delta::of(7), PortMode::Auxiliary),

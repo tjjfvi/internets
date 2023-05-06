@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use crate::*;
 
 const MIN_DLL_LEN: Length = Length::of(3);
@@ -41,7 +43,9 @@ impl<B: Buffer> Alloc for RingAlloc<B> {
         let remaining_len = free_len - len;
         let new_addr = addr + len;
         if remaining_len.non_zero() {
-          *self.word_mut(new_addr) = Word::null_len(remaining_len);
+          self
+            .word(new_addr)
+            .write(Word::null_len(remaining_len), Ordering::Relaxed);
         }
         if remaining_len >= MIN_DLL_LEN {
           if prev.0 == addr.0 {
@@ -68,11 +72,13 @@ impl<B: Buffer> Alloc for RingAlloc<B> {
     debug_assert!(len.non_zero());
     self.assert_valid(addr, len);
     if cfg!(debug_assertions) {
-      self.slice_mut(addr, len).fill(Word::NULL);
+      self.write_slice(addr, len, &vec![Word::NULL; len.length_words()][..])
     }
     let next = self.alloc;
     let prev = next + self.read_word(next + Delta::of(1)).as_null_delta();
-    *self.word_mut(addr) = Word::null_len(len);
+    self
+      .word(addr)
+      .write(Word::null_len(len), Ordering::Relaxed);
     if len >= MIN_DLL_LEN {
       self.dll_link(prev, addr);
       self.dll_link(addr, next);
@@ -82,12 +88,18 @@ impl<B: Buffer> Alloc for RingAlloc<B> {
 }
 
 impl<B: Buffer> RingAlloc<B> {
-  pub fn new(mut buffer: B) -> Self {
+  pub fn new(buffer: B) -> Self {
     safe! { assert!(buffer.len() > Length::of(0)) };
     let alloc_addr = buffer.origin();
-    *buffer.word_mut(alloc_addr) = Word::null_len(buffer.len());
-    *buffer.word_mut(alloc_addr + Delta::of(1)) = Word::NULL;
-    *buffer.word_mut(alloc_addr + Delta::of(2)) = Word::NULL;
+    buffer
+      .word(alloc_addr)
+      .write(Word::null_len(buffer.len()), Ordering::Relaxed);
+    buffer
+      .word(alloc_addr + Delta::of(1))
+      .write(Word::NULL, Ordering::Relaxed);
+    buffer
+      .word(alloc_addr + Delta::of(2))
+      .write(Word::NULL, Ordering::Relaxed);
     RingAlloc {
       buffer,
       alloc: alloc_addr,
@@ -95,8 +107,12 @@ impl<B: Buffer> RingAlloc<B> {
   }
 
   fn dll_link(&mut self, a: Addr, b: Addr) {
-    *self.word_mut(a + Delta::of(2)) = Word::null_delta(b - a);
-    *self.word_mut(b + Delta::of(1)) = Word::null_delta(a - b);
+    self
+      .word(a + Delta::of(2))
+      .write(Word::null_delta(b - a), Ordering::Relaxed);
+    self
+      .word(b + Delta::of(1))
+      .write(Word::null_delta(a - b), Ordering::Relaxed);
   }
 
   fn dll_read_prev_next(&mut self, addr: Addr) -> (Addr, Addr) {

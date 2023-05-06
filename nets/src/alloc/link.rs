@@ -42,7 +42,7 @@ impl<B: Buffer> Alloc for LinkAlloc<B> {
     debug_assert!(len >= Length::of(2));
     self.assert_valid(addr, len);
     if cfg!(debug_assertions) {
-      self.slice_mut(addr, len).fill(Word::NULL);
+      self.write_slice(addr, len, &vec![Word::NULL; len.length_words()][..])
     }
     let alloc = self.get_alloc(len);
     self.write_payload(addr, alloc);

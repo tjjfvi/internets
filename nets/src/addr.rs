@@ -1,5 +1,8 @@
 use crate::*;
-use std::ops::{Add, Sub};
+use std::{
+  ops::{Add, Sub},
+  sync::atomic::{AtomicIsize, Ordering},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Addr(pub(super) *const AtomicWord);
@@ -35,5 +38,17 @@ impl Sub<Addr> for Addr {
     Delta {
       offset_bytes: ((self.0 as isize) - (base.0 as isize)) as i32,
     }
+  }
+}
+
+#[derive(Debug)]
+pub struct AtomicAddr(pub(super) AtomicIsize);
+
+impl AtomicAddr {
+  pub fn new(value: Addr) -> Self {
+    AtomicAddr(AtomicIsize::new(value.0 as isize))
+  }
+  pub fn fetch_add(&self, len: Length, order: Ordering) -> Addr {
+    Addr(self.0.fetch_add(len.length_bytes as isize, order) as *const AtomicWord)
   }
 }

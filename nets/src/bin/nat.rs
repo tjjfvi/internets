@@ -142,7 +142,7 @@ fn main() {
   let mut stats = Stats::default();
   let buffer = ArrayBuffer::new(1 << 19);
   for _ in 0..1000 {
-    let mut net = BasicNet::new(RingAlloc::new(buffer.as_ref()));
+    let mut net = BasicNet::new(RingAlloc::new(buffer.as_ref()), Vec::new());
     let base = net.alloc_write(&[
       Word::port(Delta::of(3), PortMode::Auxiliary),
       Word::kind(Nat::MUL),

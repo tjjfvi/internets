@@ -45,7 +45,7 @@ impl<T: Deref<Target = [AtomicWord]>> Buffer for ArrayBuffer<T> {
   }
 
   #[inline(always)]
-  fn word(&mut self, addr: Addr) -> &mut AtomicWord {
+  fn word(&self, addr: Addr) -> &AtomicWord {
     self.assert_valid(addr, Length::of(1));
     unsafe { &mut *(addr.0 as *mut AtomicWord) }
   }
@@ -67,20 +67,15 @@ impl<T: Deref<Target = [AtomicWord]>> Buffer for ArrayBuffer<T> {
   }
 
   #[inline(always)]
-  fn word_mut(&mut self, addr: Addr) -> &mut Word {
-    self.assert_valid(addr, Length::of(1));
-    unsafe { &mut *(addr.0 as *mut Word) }
-  }
-
-  #[inline(always)]
-  fn write_payload<P>(&mut self, addr: Addr, value: P) {
+  fn write_payload<P>(&self, addr: Addr, value: P) {
     self.assert_valid(addr, Length::of_payload::<P>());
     unsafe { write_unaligned(addr.0 as *mut P, value) }
   }
 
   #[inline(always)]
-  fn slice_mut(&mut self, addr: Addr, len: Length) -> &mut [Word] {
+  fn write_slice(&self, addr: Addr, len: Length, data: &[Word]) {
     unsafe { std::slice::from_raw_parts_mut(addr.0 as *mut Word, len.length_words()) }
+      .copy_from_slice(data)
   }
 }
 

@@ -16,7 +16,7 @@ pub trait Alloc: Buffer + Debug {
   fn alloc_write(&mut self, data: &[Word]) -> Addr {
     let len = Length::of(data.len() as u32);
     let addr = self.alloc(len);
-    self.slice_mut(addr, len).copy_from_slice(data);
+    self.write_slice(addr, len, data);
     addr
   }
   fn free(&mut self, addr: Addr, len: Length);
