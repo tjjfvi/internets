@@ -23,6 +23,12 @@ pub enum LinkHalf {
   Port(Addr, PortMode),
 }
 
+enum ResolvedLinkHalf {
+  Aux(Addr),
+  Prn(Addr),
+  Nil(Kind),
+}
+
 impl<M: Alloc> DelegateAlloc for BasicNet<M> {
   type Alloc = M;
   #[inline(always)]
@@ -43,22 +49,23 @@ impl<M: Alloc> Net for BasicNet<M> {
 
   #[inline(always)]
   fn link(&mut self, a: LinkHalf, b: LinkHalf) {
-    let a = self.get_link_half(a);
-    let b = self.get_link_half(b);
-    use LinkHalf::*;
-    use PortMode::*;
-    match (a, b) {
-      (Port(a, Auxiliary), Port(b, Auxiliary)) => self.link_aux_aux(a, b),
-      (Port(a, Auxiliary), Port(b, Principal)) => self.link_aux_prn(a, b),
-      (Port(a, Auxiliary), Kind(b)) => self.link_aux_nil(a, b),
-      (Port(a, Principal), Port(b, Auxiliary)) => self.link_aux_prn(b, a),
-      (Port(a, Principal), Port(b, Principal)) => self.link_prn_prn(a, b),
-      (Port(a, Principal), Kind(b)) => self.link_prn_nil(a, b),
-      (Kind(a), Port(b, Auxiliary)) => self.link_aux_nil(b, a),
-      (Kind(a), Port(b, Principal)) => self.link_prn_nil(b, a),
-      (Kind(a), Kind(b)) => self.link_nil_nil(a, b),
-      _ => fail!(unreachable!()),
-    }
+    return self.link(a, b);
+    // let a = self.get_link_half(a);
+    // let b = self.get_link_half(b);
+    // use LinkHalf::*;
+    // use PortMode::*;
+    // match (a, b) {
+    //   (Port(a, Auxiliary), Port(b, Auxiliary)) => self.link_aux_aux(a, b),
+    //   (Port(a, Auxiliary), Port(b, Principal)) => self.link_aux_prn(a, b),
+    //   (Port(a, Auxiliary), Kind(b)) => self.link_aux_nil(a, b),
+    //   (Port(a, Principal), Port(b, Auxiliary)) => self.link_aux_prn(b, a),
+    //   (Port(a, Principal), Port(b, Principal)) => self.link_prn_prn(a, b),
+    //   (Port(a, Principal), Kind(b)) => self.link_prn_nil(a, b),
+    //   (Kind(a), Port(b, Auxiliary)) => self.link_aux_nil(b, a),
+    //   (Kind(a), Port(b, Principal)) => self.link_prn_nil(b, a),
+    //   (Kind(a), Kind(b)) => self.link_nil_nil(a, b),
+    //   _ => fail!(unreachable!()),
+    // }
   }
 
   #[inline(always)]
@@ -83,6 +90,92 @@ impl<M: Alloc> BasicNet<M> {
   }
 
   #[inline(always)]
+  fn match_link<T>(
+    &mut self,
+    a: LinkHalf,
+    // aux_new: impl Fn(Addr) -> Word,
+    aux_cont: impl Fn(&mut Self, Addr) -> T,
+    prn: impl Fn(&mut Self, Addr) -> T,
+    nil: impl Fn(&mut Self, Kind) -> T,
+  ) -> T {
+    // let a = self.get_link_half(a);
+    let a = match a {
+      LinkHalf::From(a) => self._match_link(a),
+      x => x,
+    };
+    match a {
+      LinkHalf::Port(b, PortMode::Auxiliary) => aux_cont(self, b),
+      LinkHalf::Port(b, PortMode::Principal) => prn(self, b),
+      LinkHalf::Kind(b) => nil(self, b),
+      _ => fail!(unreachable!()),
+    }
+  }
+
+  // #[inline(never)]
+  // fn _match_link<T>(
+  //   &mut self,
+  //   a: Addr,
+  //   aux_new: impl Fn(Addr) -> Word,
+  //   aux_cont: impl Fn(&mut Self, Addr) -> T,
+  //   prn: impl Fn(&mut Self, Addr) -> T,
+  //   nil: impl Fn(&mut Self, Kind) -> T,
+  // ) -> T {
+  //   loop {
+  //     let a_word = self.word(a).swap(Word::NULL, Ordering::Relaxed);
+  //     let b = match a_word.mode() {
+  //       WordMode::Kind => return nil(self, a_word.as_kind()),
+  //       WordMode::Port(PortMode::Principal) => return prn(self, a + a_word.as_port()),
+  //       WordMode::Null => {
+  //         std::hint::spin_loop();
+  //         continue;
+  //       }
+  //       WordMode::Port(PortMode::Auxiliary) => {
+  //         fence(Ordering::Acquire);
+  //         a + a_word.as_port()
+  //       }
+  //     };
+  //     match self.word(b).compare_exchange_weak(
+  //       Word::port(a - b, PortMode::Auxiliary),
+  //       aux_new(b),
+  //       Ordering::Release,
+  //       Ordering::Relaxed,
+  //     ) {
+  //       Ok(_) => return aux_cont(self, b),
+  //       Err(_) => {
+  //         self.word(a).write(a_word, Ordering::Relaxed);
+  //         std::hint::spin_loop();
+  //       }
+  //     }
+  //   }
+  // }
+
+  #[inline(always)]
+  fn _match_link(
+    &mut self,
+    a: Addr,
+    // aux_new: impl Fn(Addr) -> Word
+  ) -> LinkHalf {
+    // let a_word = self.word(a).swap(Word::NULL, Ordering::Relaxed);
+    // let a_word = self.word(a).read(Ordering::Relaxed);
+    let a_word = self.read_word(a);
+    match a_word.mode() {
+      WordMode::Kind => return LinkHalf::Kind(a_word.as_kind()),
+      WordMode::Port(PortMode::Principal) => {
+        return LinkHalf::Port(a + a_word.as_port(), PortMode::Principal)
+      }
+      WordMode::Port(PortMode::Auxiliary) => {
+        // fence(Ordering::Acquire);
+        let b = a + a_word.as_port();
+        // self.word(b).write(aux_new(b), Ordering::Relaxed);
+        LinkHalf::Port(b, PortMode::Auxiliary)
+      }
+      WordMode::Null => {
+        fail!(unreachable!());
+      }
+    }
+  }
+
+  #[inline(always)]
   fn get_link_half(&self, link_half: LinkHalf) -> LinkHalf {
     match link_half {
       LinkHalf::From(addr) => {
@@ -98,103 +191,53 @@ impl<M: Alloc> BasicNet<M> {
   }
 
   #[inline(always)]
-  fn match_link<T>(
-    &mut self,
-    a: LinkHalf,
-    aux_new: impl Fn(Addr) -> Word,
-    aux_cont: impl Fn(&mut Self, Addr) -> T,
-    prn: impl Fn(&mut Self, Addr) -> T,
-    nil: impl Fn(&mut Self, Kind) -> T,
-  ) -> T {
-    let a = match a {
-      LinkHalf::Kind(kind) => return nil(self, kind),
-      LinkHalf::Port(a, PortMode::Principal) => return prn(self, a),
-      LinkHalf::Port(a, PortMode::Auxiliary) => {
-        let word = aux_new(a);
-        if word.0 != 0 {
-          self.word(a).write(word, Ordering::Relaxed);
-        }
-        return aux_cont(self, a);
-      }
-      LinkHalf::From(a) => a,
-    };
-    self._match_link(a, aux_new, aux_cont, prn, nil)
-  }
-
-  #[inline(never)]
-  fn _match_link<T>(
-    &mut self,
-    a: Addr,
-    aux_new: impl Fn(Addr) -> Word,
-    aux_cont: impl Fn(&mut Self, Addr) -> T,
-    prn: impl Fn(&mut Self, Addr) -> T,
-    nil: impl Fn(&mut Self, Kind) -> T,
-  ) -> T {
-    loop {
-      let a_word = self.word(a).swap(Word::NULL, Ordering::Relaxed);
-      let b = match a_word.mode() {
-        WordMode::Kind => return nil(self, a_word.as_kind()),
-        WordMode::Port(PortMode::Principal) => return prn(self, a + a_word.as_port()),
-        WordMode::Null => {
-          std::hint::spin_loop();
-          continue;
-        }
-        WordMode::Port(PortMode::Auxiliary) => {
-          fence(Ordering::Acquire);
-          a + a_word.as_port()
-        }
-      };
-      match self.word(b).compare_exchange_weak(
-        Word::port(a - b, PortMode::Auxiliary),
-        aux_new(b),
-        Ordering::Release,
-        Ordering::Relaxed,
-      ) {
-        Ok(_) => return aux_cont(self, b),
-        Err(_) => {
-          self.word(a).write(a_word, Ordering::Relaxed);
-          std::hint::spin_loop();
-        }
-      }
-    }
-  }
-
-  #[inline(always)]
   pub fn link(&mut self, a: LinkHalf, b: LinkHalf) {
     self.match_link(
       a,
-      |_| Word::NULL,
-      |slf, a| {
-        slf.match_link(
-          b,
-          |b| Word::port(a - b, PortMode::Auxiliary),
-          |slf, b| {
-            slf
-              .word(a)
-              .write(Word::port(b - a, PortMode::Auxiliary), Ordering::Relaxed)
-          },
-          |slf, b| slf.link_aux_prn(a, b),
-          |slf, b| slf.link_aux_nil(a, b),
-        )
-      },
-      |slf, a| {
-        slf.match_link(
-          b,
-          |b| Word::port(a - b, PortMode::Principal),
-          |_, _| {},
-          |slf, b| slf.link_prn_prn(a, b),
-          |slf, b| slf.link_prn_nil(a, b),
-        )
-      },
-      |slf, a| {
-        slf.match_link(
-          b,
-          |_| Word::kind(a),
-          |_, _| {},
-          |slf, b| slf.link_prn_nil(b, a),
-          |slf, b| slf.link_nil_nil(a, b),
-        )
-      },
+      // |_| Word::NULL,
+      |slf, a| slf.link_aux(b, a),
+      |slf, a| slf.link_prn(b, a),
+      |slf, a| slf.link_nil(b, a),
+    )
+  }
+
+  #[inline(always)]
+  fn link_aux(&mut self, b: LinkHalf, a: Addr) {
+    self.match_link(
+      b,
+      // |b| Word::port(a - b, PortMode::Auxiliary),
+      // |slf, b| {
+      //   slf
+      //     .word(a)
+      //     .write(Word::port(b - a, PortMode::Auxiliary), Ordering::Relaxed)
+      // },
+      |slf, b| slf.link_aux_aux(a, b),
+      |slf, b| slf.link_aux_prn(a, b),
+      |slf, b| slf.link_aux_nil(a, b),
+    )
+  }
+
+  #[inline(always)]
+  fn link_prn(&mut self, b: LinkHalf, a: Addr) {
+    self.match_link(
+      b,
+      // |b| Word::port(a - b, PortMode::Principal),
+      // |_, _| {},
+      |slf, b| slf.link_aux_prn(b, a),
+      |slf, b| slf.link_prn_prn(a, b),
+      |slf, b| slf.link_prn_nil(a, b),
+    )
+  }
+
+  #[inline(always)]
+  fn link_nil(&mut self, b: LinkHalf, a: Kind) {
+    self.match_link(
+      b,
+      // |_| Word::kind(a),
+      // |_, _| {},
+      |slf, b| slf.link_aux_nil(b, a),
+      |slf, b| slf.link_prn_nil(b, a),
+      |slf, b| slf.link_nil_nil(a, b),
     )
   }
 

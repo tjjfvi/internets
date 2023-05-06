@@ -117,73 +117,73 @@ impl Word {
   }
 }
 
-// #[derive(Debug)]
-// pub struct AtomicWord(pub AtomicU32);
-
-// impl AtomicWord {
-//   #[inline(always)]
-//   pub fn new(&self, value: Word) -> AtomicWord {
-//     AtomicWord(AtomicU32::new(value.0))
-//   }
-//   #[inline(always)]
-//   pub fn read(&self, order: Ordering) -> Word {
-//     Word(self.0.load(order))
-//   }
-//   #[inline(always)]
-//   pub fn write(&mut self, value: Word, order: Ordering) {
-//     self.0.store(value.0, order)
-//   }
-//   #[inline(always)]
-//   pub fn swap(&mut self, val: Word, order: Ordering) -> Word {
-//     Word(self.0.swap(val.0, order))
-//   }
-//   #[inline(always)]
-//   pub fn compare_exchange_weak(
-//     &mut self,
-//     current: Word,
-//     new: Word,
-//     success: Ordering,
-//     failure: Ordering,
-//   ) -> Result<Word, Word> {
-//     match self
-//       .0
-//       .compare_exchange_weak(current.0, new.0, success, failure)
-//     {
-//       Ok(x) => Ok(Word(x)),
-//       Err(x) => Err(Word(x)),
-//     }
-//   }
-// }
-
 #[derive(Debug)]
-pub struct AtomicWord(Word);
+pub struct AtomicWord(pub AtomicU32);
 
 impl AtomicWord {
   #[inline(always)]
   pub fn new(&self, value: Word) -> AtomicWord {
-    AtomicWord(value)
+    AtomicWord(AtomicU32::new(value.0))
   }
   #[inline(always)]
-  pub fn read(&self, _: Ordering) -> Word {
-    self.0
+  pub fn read(&self, order: Ordering) -> Word {
+    Word(self.0.load(order))
   }
   #[inline(always)]
-  pub fn write(&mut self, value: Word, _: Ordering) {
-    self.0 = value
+  pub fn write(&mut self, value: Word, order: Ordering) {
+    self.0.store(value.0, order)
   }
   #[inline(always)]
-  pub fn swap(&mut self, val: Word, _: Ordering) -> Word {
-    std::mem::replace(&mut self.0, val)
+  pub fn swap(&mut self, val: Word, order: Ordering) -> Word {
+    Word(self.0.swap(val.0, order))
   }
   #[inline(always)]
   pub fn compare_exchange_weak(
     &mut self,
     current: Word,
     new: Word,
-    _: Ordering,
-    _: Ordering,
+    success: Ordering,
+    failure: Ordering,
   ) -> Result<Word, Word> {
-    self.0 = new;
-    Ok(current)
+    match self
+      .0
+      .compare_exchange_weak(current.0, new.0, success, failure)
+    {
+      Ok(x) => Ok(Word(x)),
+      Err(x) => Err(Word(x)),
+    }
   }
 }
+
+// #[derive(Debug)]
+// pub struct AtomicWord(Word);
+
+// impl AtomicWord {
+//   #[inline(always)]
+//   pub fn new(&self, value: Word) -> AtomicWord {
+//     AtomicWord(value)
+//   }
+//   #[inline(always)]
+//   pub fn read(&self, _: Ordering) -> Word {
+//     self.0
+//   }
+//   #[inline(always)]
+//   pub fn write(&mut self, value: Word, _: Ordering) {
+//     self.0 = value
+//   }
+//   #[inline(always)]
+//   pub fn swap(&mut self, val: Word, _: Ordering) -> Word {
+//     std::mem::replace(&mut self.0, val)
+//   }
+//   #[inline(always)]
+//   pub fn compare_exchange_weak(
+//     &mut self,
+//     current: Word,
+//     new: Word,
+//     _: Ordering,
+//     _: Ordering,
+//   ) -> Result<Word, Word> {
+//     self.0 = new;
+//     Ok(current)
+//   }
+// }
