@@ -1,7 +1,7 @@
 use crate::*;
 use std::{
   fmt::{Debug, Display},
-  sync::atomic::{fence, Ordering},
+  sync::atomic::Ordering,
   time::{Duration, Instant},
 };
 
@@ -21,12 +21,6 @@ pub enum LinkHalf {
   From(Addr),
   Kind(Kind),
   Port(Addr, PortMode),
-}
-
-enum ResolvedLinkHalf {
-  Aux(Addr),
-  Prn(Addr),
-  Nil(Kind),
 }
 
 impl<M: Alloc> DelegateAlloc for BasicNet<M> {
