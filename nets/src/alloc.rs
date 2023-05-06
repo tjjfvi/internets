@@ -23,20 +23,20 @@ pub trait Alloc: Buffer + Debug {
 }
 
 pub trait DelegateAlloc: Debug {
-  type Alloc: Alloc;
-  fn alloc(&self) -> &Self::Alloc;
-  fn alloc_mut(&mut self) -> &mut Self::Alloc;
+  type Alloc<'a>: Alloc + 'a
+  where
+    Self: 'a;
+  fn alloc<'a>(&'a self) -> &'a Self::Alloc<'a>;
+  fn alloc_mut(&mut self) -> &mut Self::Alloc<'_>;
 }
 
 impl<T: DelegateAlloc> DelegateBuffer for T {
-  type Buffer = T::Alloc;
+  type Buffer<'a> = T::Alloc<'a>
+  where
+    Self: 'a;
   #[inline(always)]
-  fn buffer(&self) -> &Self::Buffer {
+  fn buffer(&self) -> &Self::Buffer<'_> {
     self.alloc()
-  }
-  #[inline(always)]
-  fn buffer_mut(&mut self) -> &mut Self::Buffer {
-    self.alloc_mut()
   }
 }
 

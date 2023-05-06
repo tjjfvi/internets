@@ -21,9 +21,10 @@ pub trait Buffer: Debug {
 }
 
 pub trait DelegateBuffer: Debug {
-  type Buffer: Buffer;
-  fn buffer(&self) -> &Self::Buffer;
-  fn buffer_mut(&mut self) -> &mut Self::Buffer;
+  type Buffer<'a>: Buffer
+  where
+    Self: 'a;
+  fn buffer(&self) -> &Self::Buffer<'_>;
 }
 
 impl<T: DelegateBuffer> Buffer for T {

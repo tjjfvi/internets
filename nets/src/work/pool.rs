@@ -4,7 +4,7 @@ use std::sync::{
   Condvar, Mutex,
 };
 
-const CHUNK_SIZE: usize = 1024;
+const CHUNK_SIZE: usize = 8;
 type Chunk = [ActivePair; CHUNK_SIZE];
 const OVERFLOW_SIZE: usize = CHUNK_SIZE * 2;
 
@@ -20,7 +20,8 @@ impl Pool {
     self.active.fetch_add(1, Ordering::Relaxed);
     PoolRef {
       pool: self,
-      local: vec![],
+      local: Vec::new(),
+      active: true,
     }
   }
 }
@@ -29,6 +30,7 @@ impl Pool {
 pub struct PoolRef<'a> {
   pool: &'a Pool,
   local: Vec<ActivePair>,
+  active: bool,
 }
 
 impl<'a> Work for PoolRef<'a> {
@@ -50,8 +52,9 @@ impl<'a> Work for PoolRef<'a> {
     }
     let mut chunks = self.pool.chunks.lock().unwrap();
     if chunks.is_empty() {
-      if self.pool.active.fetch_sub(1, Ordering::Relaxed) == 0 {
+      if self.pool.active.fetch_sub(1, Ordering::Relaxed) == 1 {
         self.pool.available.notify_all();
+        self.active = false;
         return None;
       }
       loop {
@@ -60,12 +63,23 @@ impl<'a> Work for PoolRef<'a> {
           break;
         }
         if self.pool.active.load(Ordering::Relaxed) == 0 {
+          self.active = false;
           return None;
         }
       }
+      self.pool.active.fetch_add(1, Ordering::Relaxed);
     }
-    self.pool.active.fetch_add(1, Ordering::Relaxed);
     self.local.extend_from_slice(&chunks.pop().unwrap());
     self.local.pop()
+  }
+}
+
+impl<'a> Drop for PoolRef<'a> {
+  fn drop(&mut self) {
+    if self.active {
+      if self.pool.active.fetch_sub(1, Ordering::Relaxed) == 1 {
+        self.pool.available.notify_all();
+      }
+    }
   }
 }

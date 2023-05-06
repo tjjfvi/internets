@@ -11,14 +11,10 @@ pub struct RingAlloc<B: Buffer> {
 }
 
 impl<B: Buffer> DelegateBuffer for RingAlloc<B> {
-  type Buffer = B;
+  type Buffer<'a> = B where Self: 'a;
   #[inline(always)]
-  fn buffer(&self) -> &Self::Buffer {
+  fn buffer(&self) -> &Self::Buffer<'_> {
     &self.buffer
-  }
-  #[inline(always)]
-  fn buffer_mut(&mut self) -> &mut Self::Buffer {
-    &mut self.buffer
   }
 }
 

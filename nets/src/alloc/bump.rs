@@ -7,19 +7,23 @@ pub struct BumpAlloc<B: Buffer> {
   alloc: AtomicAddr,
 }
 
-impl<B: Buffer> DelegateBuffer for BumpAlloc<B> {
-  type Buffer = B;
+impl<'a, B: Buffer> DelegateBuffer for BumpAlloc<B> {
+  type Buffer<'b> = B where Self: 'b;
   #[inline(always)]
-  fn buffer(&self) -> &Self::Buffer {
+  fn buffer(&self) -> &Self::Buffer<'_> {
     &self.buffer
-  }
-  #[inline(always)]
-  fn buffer_mut(&mut self) -> &mut Self::Buffer {
-    &mut self.buffer
   }
 }
 
-impl<B: Buffer> Alloc for BumpAlloc<B> {
+impl<'a, B: Buffer> DelegateBuffer for &'a BumpAlloc<B> {
+  type Buffer<'b> = B where Self: 'b;
+  #[inline(always)]
+  fn buffer(&self) -> &Self::Buffer<'_> {
+    &self.buffer
+  }
+}
+
+impl<'a, B: Buffer> Alloc for &'a BumpAlloc<B> {
   #[inline(always)]
   fn alloc(&mut self, len: Length) -> Addr {
     let addr = self.alloc.fetch_add(len, Ordering::Relaxed);
@@ -34,6 +38,18 @@ impl<B: Buffer> Alloc for BumpAlloc<B> {
     if cfg!(debug_assertions) {
       self.write_slice(addr, len, &vec![Word::NULL; len.length_words()][..])
     }
+  }
+}
+
+impl<B: Buffer> Alloc for BumpAlloc<B> {
+  #[inline(always)]
+  fn alloc(&mut self, len: Length) -> Addr {
+    (&*self).alloc(len)
+  }
+
+  #[inline(always)]
+  fn free(&mut self, addr: Addr, len: Length) {
+    (&*self).free(addr, len)
   }
 }
 

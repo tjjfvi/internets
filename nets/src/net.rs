@@ -24,13 +24,13 @@ pub enum LinkHalf {
 }
 
 impl<M: Alloc, W: Work> DelegateAlloc for BasicNet<M, W> {
-  type Alloc = M;
+  type Alloc<'a> = M where Self: 'a;
   #[inline(always)]
-  fn alloc(&self) -> &Self::Alloc {
+  fn alloc(&self) -> &Self::Alloc<'_> {
     &self.mem
   }
   #[inline(always)]
-  fn alloc_mut(&mut self) -> &mut Self::Alloc {
+  fn alloc_mut(&mut self) -> &mut Self::Alloc<'_> {
     &mut self.mem
   }
 }
