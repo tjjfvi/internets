@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cache-padded = "1.2.0"
+crossbeam = "0.8.2"
 internets-interactions-macro = { path = "../interactions-macro" }
 
 [features]

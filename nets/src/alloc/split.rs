@@ -1,10 +1,11 @@
 use crate::*;
+use crossbeam::utils::CachePadded;
 use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
 pub struct SplitAlloc<'a, B: Buffer> {
   buffer: &'a B,
-  alloc: AtomicAddr,
+  alloc: CachePadded<AtomicAddr>,
 }
 
 impl<'a, B: Buffer> DelegateBuffer for SplitAlloc<'a, B> {
@@ -57,9 +58,9 @@ impl<'a, B: Buffer> SplitAlloc<'a, B> {
   pub fn new(buffer: &'a B, count: usize) -> Vec<Self> {
     (0..count)
       .map(|i| {
-        let alloc = AtomicAddr::new(
+        let alloc = CachePadded::new(AtomicAddr::new(
           buffer.origin() + Length::of(((buffer.len().length_words() * i) / count) as u32),
-        );
+        ));
         SplitAlloc { buffer, alloc }
       })
       .collect()

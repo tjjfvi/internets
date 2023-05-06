@@ -298,7 +298,7 @@ pub trait InteractionsMod<N: Net + ?Sized>: Interactions<N> {
   const KIND_END: u32;
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Stats {
   pub ops: u64,
   pub elapsed: Duration,
@@ -326,4 +326,12 @@ pub fn reduce_with_stats<N: Net, I: Interactions<N>>(
   }
   stats.elapsed += Instant::now() - start;
   stats.ops += ops;
+}
+
+pub fn merge_stats(stats: &[Stats]) -> Stats {
+  stats.iter().fold(Stats::default(), |mut a, b| {
+    a.ops += b.ops;
+    a.elapsed = a.elapsed.max(b.elapsed);
+    a
+  })
 }

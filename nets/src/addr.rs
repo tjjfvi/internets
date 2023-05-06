@@ -48,6 +48,7 @@ impl AtomicAddr {
   pub fn new(value: Addr) -> Self {
     AtomicAddr(AtomicIsize::new(value.0 as isize))
   }
+  #[inline(always)]
   pub fn fetch_add(&self, len: Length, order: Ordering) -> Addr {
     Addr(self.0.fetch_add(len.length_bytes as isize, order) as *const AtomicWord)
   }

@@ -1,126 +1,76 @@
+use std::sync::{Arc, Condvar, Mutex};
+
 use crate::*;
-use cache_padded::CachePadded;
-use std::{
-  num::NonZeroU64,
-  sync::{
-    atomic::{AtomicIsize, AtomicU64, Ordering},
-    Condvar, Mutex,
-  },
-};
+use crossbeam::deque::{Stealer, Worker};
 
 #[derive(Debug)]
-struct Stack {
-  data: Box<[AtomicU64]>,
-  top: CachePadded<AtomicIsize>,
-  steal: CachePadded<AtomicIsize>,
-}
-
-impl Stack {
-  pub fn pop(&self) -> Option<NonZeroU64> {
-    loop {
-      let idx = self.top.fetch_sub(1, Ordering::Relaxed) - 1;
-      if idx < 0 {
-        self.top.store(0, Ordering::Relaxed);
-        return None;
-      }
-      let val = self.data[idx as usize].swap(0, Ordering::Relaxed);
-      if val != 0 {
-        return NonZeroU64::new(val);
-      }
-    }
-  }
-  pub fn push(&self, val: u64) -> usize {
-    let idx = self.top.fetch_add(1, Ordering::Relaxed);
-    self.data[idx as usize].store(val, Ordering::Relaxed);
-    self.steal.store(idx, Ordering::Release);
-    return idx as usize;
-  }
-  pub fn steal(&self) -> Option<NonZeroU64> {
-    loop {
-      let idx = self.steal.fetch_sub(1, Ordering::Relaxed) - 1;
-      if idx < 0 {
-        return None;
-      }
-      let val = self.data[idx as usize].swap(0, Ordering::Relaxed);
-      if val != 0 {
-        return NonZeroU64::new(val);
-      }
-    }
-  }
-}
-
-#[derive(Debug)]
-pub struct Steal {
-  stacks: Vec<Stack>,
+struct StealInner {
+  stealers: Vec<Stealer<ActivePair>>,
   waiting: Mutex<usize>,
   wake: Condvar,
 }
 
 impl Steal {
-  pub fn new(stacks: usize, size: usize) -> Self {
-    assert!(size.is_power_of_two());
-    Steal {
-      stacks: (0..stacks)
-        .map(|_| Stack {
-          data: unsafe { std::mem::transmute(vec![0u64; size].into_boxed_slice()) },
-          top: CachePadded::new(AtomicIsize::new(0)),
-          steal: CachePadded::new(AtomicIsize::new(0)),
-        })
-        .collect(),
+  pub fn new(stacks: usize) -> Vec<Steal> {
+    let workers = (0..stacks).map(|_| Worker::new_fifo()).collect::<Vec<_>>();
+    let stealers = workers.iter().map(|w| w.stealer()).collect::<Vec<_>>();
+    let inner = Arc::new(StealInner {
+      stealers,
       waiting: Mutex::new(0),
       wake: Condvar::new(),
-    }
-  }
-  pub fn as_ref(&self, i: usize) -> StealRef {
-    StealRef {
-      i,
-      steal: self,
-      stack: &self.stacks[i],
-    }
+    });
+    let steals = workers
+      .into_iter()
+      .map(|worker| Steal {
+        worker,
+        inner: inner.clone(),
+      })
+      .collect::<Vec<_>>();
+    steals
   }
 }
 
 #[derive(Debug)]
-pub struct StealRef<'a> {
-  i: usize,
-  stack: &'a Stack,
-  steal: &'a Steal,
+pub struct Steal {
+  worker: Worker<ActivePair>,
+  inner: Arc<StealInner>,
 }
 
-impl<'a> Work for StealRef<'a> {
+impl<'a> Work for &'a Steal {
+  #[inline(always)]
   fn add(&mut self, pair: ActivePair) {
-    // println!("push {:?}", pair);
-    let data = unsafe { std::mem::transmute::<ActivePair, u64>(pair) };
-    self.stack.push(data);
-    self.steal.wake.notify_one();
+    let was_empty = self.worker.is_empty();
+    self.worker.push(pair);
+    if was_empty {
+      self.inner.wake.notify_one()
+    }
   }
   fn take(&mut self) -> Option<ActivePair> {
     loop {
-      if let Some(x) = self
-        .stack
-        .pop()
-        .or_else(|| {
-          for (i, stack) in self.steal.stacks.iter().enumerate() {
-            if i == self.i {
-              continue;
-            }
-            if let Some(x) = stack.steal() {
-              return Some(x);
-            }
-          }
-          None
-        })
-        .map(|x| unsafe { std::mem::transmute(x) })
-      {
+      if let Some(x) = self.worker.pop().or_else(|| {
+        self
+          .inner
+          .stealers
+          .iter()
+          .map(|s| {
+            std::iter::repeat_with(|| s.steal_batch_and_pop(&self.worker))
+              .find(|x| !x.is_retry())
+              .unwrap()
+          })
+          .find_map(|s| s.success())
+      }) {
         return Some(x);
       }
-      let mut waiting = self.steal.waiting.lock().unwrap();
+      let mut waiting = self.inner.waiting.lock().unwrap();
       *waiting += 1;
-      if *waiting == self.steal.stacks.len() {
-        self.steal.wake.notify_all();
+      if *waiting == self.inner.stealers.len() {
+        self.inner.wake.notify_all();
         return None;
       } else {
-        waiting = self.steal.wake.wait(waiting).unwrap();
+        waiting = self.inner.wake.wait(waiting).unwrap();
+        if *waiting == self.inner.stealers.len() {
+          return None;
+        }
         *waiting -= 1;
       }
     }
