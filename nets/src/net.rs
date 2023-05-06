@@ -42,30 +42,9 @@ impl<M: Alloc> DelegateAlloc for BasicNet<M> {
 }
 
 impl<M: Alloc> Net for BasicNet<M> {
-  // #[inline(always)]
-  // fn link(&mut self, a: LinkHalf, b: LinkHalf) {
-  //   self.link(a, b)
-  // }
-
   #[inline(always)]
   fn link(&mut self, a: LinkHalf, b: LinkHalf) {
-    return self.link(a, b);
-    // let a = self.get_link_half(a);
-    // let b = self.get_link_half(b);
-    // use LinkHalf::*;
-    // use PortMode::*;
-    // match (a, b) {
-    //   (Port(a, Auxiliary), Port(b, Auxiliary)) => self.link_aux_aux(a, b),
-    //   (Port(a, Auxiliary), Port(b, Principal)) => self.link_aux_prn(a, b),
-    //   (Port(a, Auxiliary), Kind(b)) => self.link_aux_nil(a, b),
-    //   (Port(a, Principal), Port(b, Auxiliary)) => self.link_aux_prn(b, a),
-    //   (Port(a, Principal), Port(b, Principal)) => self.link_prn_prn(a, b),
-    //   (Port(a, Principal), Kind(b)) => self.link_prn_nil(a, b),
-    //   (Kind(a), Port(b, Auxiliary)) => self.link_aux_nil(b, a),
-    //   (Kind(a), Port(b, Principal)) => self.link_prn_nil(b, a),
-    //   (Kind(a), Kind(b)) => self.link_nil_nil(a, b),
-    //   _ => fail!(unreachable!()),
-    // }
+    self.link(a, b)
   }
 
   #[inline(always)]
@@ -93,15 +72,20 @@ impl<M: Alloc> BasicNet<M> {
   fn match_link<T>(
     &mut self,
     a: LinkHalf,
-    // aux_new: impl Fn(Addr) -> Word,
+    aux_new: impl Fn(Addr) -> Option<Word>,
     aux_cont: impl Fn(&mut Self, Addr) -> T,
     prn: impl Fn(&mut Self, Addr) -> T,
     nil: impl Fn(&mut Self, Kind) -> T,
   ) -> T {
     // let a = self.get_link_half(a);
     match a {
-      LinkHalf::From(a) => self._match_link(a, aux_cont, prn, nil),
-      LinkHalf::Port(b, PortMode::Auxiliary) => aux_cont(self, b),
+      LinkHalf::From(a) => self._match_link(a, aux_new, aux_cont, prn, nil),
+      LinkHalf::Port(b, PortMode::Auxiliary) => {
+        if let Some(w) = aux_new(b) {
+          self.word(b).write(w, Ordering::Relaxed);
+        }
+        aux_cont(self, b)
+      }
       LinkHalf::Port(b, PortMode::Principal) => prn(self, b),
       LinkHalf::Kind(b) => nil(self, b),
     }
@@ -149,7 +133,7 @@ impl<M: Alloc> BasicNet<M> {
   fn _match_link<T>(
     &mut self,
     a: Addr,
-    // aux_new: impl Fn(Addr) -> Word
+    aux_new: impl Fn(Addr) -> Option<Word>,
     aux_cont: impl Fn(&mut Self, Addr) -> T,
     prn: impl Fn(&mut Self, Addr) -> T,
     nil: impl Fn(&mut Self, Kind) -> T,
@@ -163,7 +147,9 @@ impl<M: Alloc> BasicNet<M> {
       WordMode::Port(PortMode::Auxiliary) => {
         // fence(Ordering::Acquire);
         let b = a + a_word.as_port();
-        // self.word(b).write(aux_new(b), Ordering::Relaxed);
+        if let Some(w) = aux_new(b) {
+          self.word(b).write(w, Ordering::Relaxed);
+        }
         aux_cont(self, b)
       }
       WordMode::Null => {
@@ -173,25 +159,11 @@ impl<M: Alloc> BasicNet<M> {
   }
 
   #[inline(always)]
-  fn get_link_half(&self, link_half: LinkHalf) -> LinkHalf {
-    match link_half {
-      LinkHalf::From(addr) => {
-        let word = self.read_word(addr);
-        match word.mode() {
-          WordMode::Kind => LinkHalf::Kind(word.as_kind()),
-          WordMode::Port(mode) => LinkHalf::Port(addr + word.as_port(), mode),
-          _ => fail!(unreachable!()),
-        }
-      }
-      x => x,
-    }
-  }
-
-  #[inline(always)]
   pub fn link(&mut self, a: LinkHalf, b: LinkHalf) {
     self.match_link(
       a,
-      // |_| Word::NULL,
+      #[inline(always)]
+      |_| None,
       #[inline(always)]
       |slf, a| slf.link_aux(b, a),
       #[inline(always)]
@@ -205,14 +177,14 @@ impl<M: Alloc> BasicNet<M> {
   fn link_aux(&mut self, b: LinkHalf, a: Addr) {
     self.match_link(
       b,
-      // |b| Word::port(a - b, PortMode::Auxiliary),
-      // |slf, b| {
-      //   slf
-      //     .word(a)
-      //     .write(Word::port(b - a, PortMode::Auxiliary), Ordering::Relaxed)
-      // },
       #[inline(always)]
-      |slf, b| slf.link_aux_aux(a, b),
+      |b| Some(Word::port(a - b, PortMode::Auxiliary)),
+      #[inline(always)]
+      |slf, b| {
+        slf
+          .word(a)
+          .write(Word::port(b - a, PortMode::Auxiliary), Ordering::Relaxed)
+      },
       #[inline(always)]
       |slf, b| slf.link_aux_prn(a, b),
       #[inline(always)]
@@ -224,10 +196,10 @@ impl<M: Alloc> BasicNet<M> {
   fn link_prn(&mut self, b: LinkHalf, a: Addr) {
     self.match_link(
       b,
-      // |b| Word::port(a - b, PortMode::Principal),
-      // |_, _| {},
       #[inline(always)]
-      |slf, b| slf.link_aux_prn(b, a),
+      |b| Some(Word::port(a - b, PortMode::Principal)),
+      #[inline(always)]
+      |_, _| {},
       #[inline(always)]
       |slf, b| slf.link_prn_prn(a, b),
       #[inline(always)]
@@ -239,25 +211,15 @@ impl<M: Alloc> BasicNet<M> {
   fn link_nil(&mut self, b: LinkHalf, a: Kind) {
     self.match_link(
       b,
-      // |_| Word::kind(a),
-      // |_, _| {}
       #[inline(always)]
-      |slf, b| slf.link_aux_nil(b, a),
+      |_| Some(Word::kind(a)),
+      #[inline(always)]
+      |_, _| {},
       #[inline(always)]
       |slf, b| slf.link_prn_nil(b, a),
       #[inline(always)]
       |slf, b| slf.link_nil_nil(a, b),
     )
-  }
-
-  #[inline(always)]
-  fn link_aux_aux(&mut self, a: Addr, b: Addr) {
-    self
-      .word(a)
-      .write(Word::port(b - a, PortMode::Auxiliary), Ordering::Relaxed);
-    self
-      .word(b)
-      .write(Word::port(a - b, PortMode::Auxiliary), Ordering::Relaxed);
   }
 
   #[inline(always)]
