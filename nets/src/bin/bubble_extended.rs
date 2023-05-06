@@ -3,7 +3,7 @@ use internets_nets::*;
 mod stdlib;
 
 interactions! {
-  type BubbleGen;
+  type BubbleExtended;
 
   use stdlib::Std;
 
@@ -81,7 +81,7 @@ interactions! {
 fn main() {
   let mut stats = Stats::default();
   let mut net = BasicNet::new(LinkAlloc::new(ArrayBuffer::new(1 << 20)));
-  BubbleGen::main(&mut net);
-  reduce_with_stats(&mut net, &BubbleGen, &mut stats);
+  BubbleExtended::main(&mut net);
+  reduce_with_stats(&mut net, &BubbleExtended, &mut stats);
   println!("{stats}");
 }
