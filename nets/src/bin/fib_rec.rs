@@ -3,9 +3,7 @@ use internets_nets::*;
 mod stdlib;
 
 interactions! {
-  type FibRec;
-
-  use stdlib::Std;
+  use stdlib;
 
   struct Fib(-U64, +U64);
 
@@ -20,21 +18,19 @@ interactions! {
     Add(x, y, o)
   }
 
-  fn main(n){
+  fn _main(n: $u64){
+    U64(n, $n)
     Fib(n, o)
     Print(o)
   }
 }
 
 fn main() {
-  use stdlib::UseStd;
   let args: Vec<_> = std::env::args().collect();
-  let n = args.get(1).map(|x| x.parse().unwrap()).unwrap_or(40);
+  let n = args.get(1).map(|x| x.parse().unwrap()).unwrap_or(64);
   let mut stats = Stats::default();
-  let mut net = BasicNet::new(LinkAlloc::new(ArrayBuffer::new(1 << 20)));
-  let [a] = FibRec::U64(&mut net, n);
-  let [b] = FibRec::main(&mut net);
-  net.link(a, b);
-  reduce_with_stats(&mut net, &FibRec, &mut stats);
+  let mut net = BasicNet::new(LinkAlloc::new(ArrayBuffer::new(1 << 28)));
+  _main(n).construct(&mut net, &Interactions);
+  reduce_with_stats(&mut net, &Interactions, &mut stats);
   println!("{stats}");
 }

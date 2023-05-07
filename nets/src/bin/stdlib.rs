@@ -1,25 +1,23 @@
-use internets_nets::*;
+use internets_nets::interactions;
 
 interactions! {
-  pub type Std;
+  pub struct Clone(-U64, +U64, +U64);
+  pub struct Erase(-U64);
 
-  struct Clone(-U64, +U64, +U64);
-  struct Erase(-U64);
+  pub struct False(+Bool);
+  pub struct True(+Bool);
 
-  struct False(+Bool);
-  struct True(+Bool);
+  pub struct U64(+U64, $u64);
 
-  struct U64(+U64, $u64);
+  pub struct Add(-U64, -U64, +U64);
+  pub struct Sub(-U64, -U64, +U64);
+  pub struct Mul(-U64, -U64, +U64);
+  pub struct Mod(-U64, -U64, +U64);
 
-  struct Add(-U64, -U64, +U64);
-  struct Sub(-U64, -U64, +U64);
-  struct Mul(-U64, -U64, +U64);
-  struct Mod(-U64, -U64, +U64);
-
-  struct AddX(-U64, +U64, $u64);
-  struct SubX(-U64, +U64, $u64);
-  struct MulX(-U64, +U64, $u64);
-  struct ModX(-U64, +U64, $u64);
+  pub struct AddX(-U64, +U64, $u64);
+  pub struct SubX(-U64, +U64, $u64);
+  pub struct MulX(-U64, +U64, $u64);
+  pub struct ModX(-U64, +U64, $u64);
 
   impl Add(_, i, o) for U64(_, $n) { AddX(i, o, $n) }
   impl Sub(_, i, o) for U64(_, $n) { SubX(i, o, $n) }
@@ -31,17 +29,17 @@ interactions! {
   impl MulX(_, o, $x) for U64(_, $y) { U64(o, $x.wrapping_mul(y)) }
   impl ModX(_, o, $x) for U64(_, $y) { U64(o, $y % x) }
 
-  struct Gt(-U64, -U64, +Bool);
-  struct Lt(-U64, -U64, +Bool);
-  struct Eq(-U64, -U64, +Bool);
-  struct Ge(-U64, -U64, +Bool);
-  struct Le(-U64, -U64, +Bool);
+  pub struct Gt(-U64, -U64, +Bool);
+  pub struct Lt(-U64, -U64, +Bool);
+  pub struct Eq(-U64, -U64, +Bool);
+  pub struct Ge(-U64, -U64, +Bool);
+  pub struct Le(-U64, -U64, +Bool);
 
-  struct GtX(-U64, +Bool, $u64);
-  struct LtX(-U64, +Bool, $u64);
-  struct EqX(-U64, +Bool, $u64);
-  struct GeX(-U64, +Bool, $u64);
-  struct LeX(-U64, +Bool, $u64);
+  pub struct GtX(-U64, +Bool, $u64);
+  pub struct LtX(-U64, +Bool, $u64);
+  pub struct EqX(-U64, +Bool, $u64);
+  pub struct GeX(-U64, +Bool, $u64);
+  pub struct LeX(-U64, +Bool, $u64);
 
   impl Gt(_, i, o) for U64(_, $n) { GtX(i, o, $n) }
   impl Lt(_, i, o) for U64(_, $n) { LtX(i, o, $n) }
@@ -67,10 +65,15 @@ interactions! {
   }
   impl Erase(_) for U64(_, $_) {}
 
-  struct Print(-U64);
+  pub struct Print(-U64);
 
-  impl Print(_) for U64(_, $n) if { println!("{}", n); true } {}
-  impl Print(_) for U64(_, $_) {}
+  impl Print(_) for U64(_, $n) {
+    side_effect(${
+      println!("{}", n)
+    })
+  }
+
+  pub fn side_effect(_effect: $()) {}
 }
 
 #[allow(unused)]

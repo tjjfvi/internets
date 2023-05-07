@@ -3,9 +3,7 @@ use internets_nets::*;
 mod stdlib;
 
 interactions! {
-  type BubbleGen;
-
-  use stdlib::Std;
+  use stdlib;
 
   struct Nil(+List);
   struct Cons(+List, -U64, -List);
@@ -68,7 +66,7 @@ interactions! {
     Sum(l, y)
   }
 
-  fn main() {
+  fn _main() {
     U64(n, $5000)
     U64(s, $1)
     Rnd(n, s, l0)
@@ -81,7 +79,7 @@ interactions! {
 fn main() {
   let mut stats = Stats::default();
   let mut net = BasicNet::new(LinkAlloc::new(ArrayBuffer::new(1 << 20)));
-  BubbleGen::main(&mut net);
-  reduce_with_stats(&mut net, &BubbleGen, &mut stats);
+  _main().construct(&mut net, &Interactions);
+  reduce_with_stats(&mut net, &Interactions, &mut stats);
   println!("{stats}");
 }

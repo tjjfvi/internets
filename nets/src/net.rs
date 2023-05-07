@@ -15,7 +15,10 @@ pub struct BasicNet<M: Alloc> {
   pub active: Vec<ActivePair>,
 }
 
+#[derive(Default)]
 pub enum LinkHalf {
+  #[default]
+  Null,
   From(Addr),
   Kind(Kind),
   Port(Addr, PortMode),
