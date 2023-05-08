@@ -27,7 +27,7 @@ interactions! {
 
 fn main() {
   let args: Vec<_> = std::env::args().collect();
-  let n = args.get(1).map(|x| x.parse().unwrap()).unwrap_or(64);
+  let n = args.get(1).map(|x| x.parse().unwrap()).unwrap_or(32);
   let mut stats = Stats::default();
   let mut net = BasicNet::new(LinkAlloc::new(ArrayBuffer::new(1 << 28)));
   _main(n).construct(&mut net, &Interactions);
