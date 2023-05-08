@@ -157,26 +157,26 @@ interactions! {
   fn _main() {
     U64(count, $5000)
     U64(seed, $1)
-    Rnd(count, seed, randomList)
+    Rnd(count, seed, random_list)
 
 
-    // Clone( randomList, _randomList, __randomList )
-    // PrintThen( _randomList, _next)
+    // Clone( random_list, _random_list, __random_list )
+    // PrintThen( _random_list, _next)
     // Erase( _next )
-    // PrintThen( __randomList, __next)
+    // PrintThen( __random_list, __next)
     // Erase( __next )
 
-    // Sort(randomList, sortedList)
-    // Clone( sortedList, _sortedList, __sortedList )
-    // PrintThen( _sortedList, _next)
-    // Await( _next, sum, __sortedList )
+    // Sort(random_list, sorted_list)
+    // Clone( sorted_list, _sorted_list, __sorted_list )
+    // PrintThen( _sorted_list, _next)
+    // Await( _next, sum, __sorted_list )
     // Sum( sum, total)
     // Print( total )
 
-    Sort(randomList, sortedList)
-    Check(sortedList, checkedList, result)
+    Sort(random_list, sorted_list)
+    Check(sorted_list, checked_list, result)
     Print( result )
-    Sum(checkedList, total)
+    Sum(checked_list, total)
     Print( total)
   }
 }
