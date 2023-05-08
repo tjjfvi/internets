@@ -66,8 +66,8 @@ interactions! {
     Sum(l, y)
   }
 
-  fn _main() {
-    U64(n, $5000)
+  fn _main(n: $u64) {
+    U64(n, $n)
     U64(s, $1)
     Rnd(n, s, l0)
     Sort(l0, l1)
@@ -77,9 +77,11 @@ interactions! {
 }
 
 fn main() {
+  let args: Vec<_> = std::env::args().collect();
+  let n = args.get(1).map(|x| x.parse().unwrap()).unwrap_or(1000);
   let mut stats = Stats::default();
   let mut net = BasicNet::new(LinkAlloc::new(ArrayBuffer::new(1 << 20)));
-  _main().construct(&mut net, &Interactions);
+  _main(n).construct(&mut net, &Interactions);
   reduce_with_stats(&mut net, &Interactions, &mut stats);
   println!("{stats}");
 }
