@@ -12,15 +12,30 @@ impl Program {
   }
 
   fn compile_struct(&self, i: usize, s: &Struct) -> TokenStream {
-    let crate_path = self.crate_path();
     let name = &s.name;
-    let vis = &s.vis;
-    let i = i as u32;
-    let arity_usize = s.parts.iter().filter_map(StructPart::port).count();
-    if arity_usize == 0 {
+    let arity = s.parts.iter().filter_map(StructPart::port).count() as u32;
+    if arity == 0 {
       emit_error!(name.span(), "missing principal port");
       return quote!();
     }
+    let struct_def = self.compile_struct_def(s);
+    let get_kind_impl = self.compile_get_kind_impl(i, s);
+    let construct_destruct_impls = if s.parts.len() == 1 {
+      self.compile_nilary_construct_destruct_impls(s)
+    } else {
+      self.compile_construct_destruct_impls(s, arity)
+    };
+    quote!(
+      #struct_def
+      #get_kind_impl
+      #construct_destruct_impls
+    )
+  }
+
+  fn compile_struct_def(&self, s: &Struct) -> TokenStream {
+    let crate_path = self.crate_path();
+    let name = &s.name;
+    let vis = &s.vis;
     let principal_idx = s
       .parts
       .iter()
@@ -28,7 +43,6 @@ impl Program {
       .find(|x| x.1.port().is_some())
       .unwrap()
       .0;
-    let arity = arity_usize as u32;
     let parts = s.parts.iter().enumerate().map(|(i, p)| match p {
       StructPart::Port(_) => {
         if i == principal_idx {
@@ -39,95 +53,98 @@ impl Program {
       }
       StructPart::Payload(PayloadType { ty, .. }) => quote!(pub #ty),
     });
-    if arity == 1 && s.parts.len() == 1 {
-      return quote!(
-        #vis struct #name<'a, M: #crate_path::Marker>(#(#parts,)*);
-        impl<'a, I: self::Use> #crate_path::GetKind<I> for #name<'a, #crate_path::GetKindMarker> {
-          const KIND: #crate_path::Kind = #crate_path::Kind::of(<I as self::Use>::KIND_START + #i);
-        }
-        impl<'a, I: self::Use> #crate_path::Construct<I> for #name<'a, #crate_path::ConstructMarker> {
-          #[inline(always)]
-          fn construct<N: #crate_path::Net>(self, net: &mut N, _: &I) {
-            let kind = <#name<'a, _> as #crate_path::GetKind<I>>::KIND;
-            *self.0 = #crate_path::LinkHalf::Kind(kind);
-          }
-        }
-        impl<'a> #crate_path::Destruct for #name<'a, #crate_path::DestructMarker> {
-          #[inline(always)]
-          fn destruct<N: #crate_path::Net>(net: &mut N, addr: #crate_path::Addr) -> Self {
-            #name(())
-          }
-          #[inline(always)]
-          fn free<N: #crate_path::Net>(_: &mut N, _: #crate_path::Addr) {}
-        }
-      );
-    }
-    let payload_len_sum = s
-      .parts
-      .iter()
-      .filter_map(StructPart::payload)
-      .map(|PayloadType { ty, .. }| quote!(.add(#crate_path::Length::of_payload::<#ty>())))
-      .collect::<Vec<_>>();
-    let len = quote!(#crate_path::Length::of(#arity) #(#payload_len_sum)*);
-    let destruct_vars = (0..s.parts.len())
-      .map(|i| format_ident!("_{}", i))
-      .collect::<Vec<_>>();
-    let ports = s
-      .parts
-      .iter()
-      .enumerate()
-      .filter_map(|(i, x)| Some((i, x.port()?)))
-      .enumerate();
-    let payloads = s
-      .parts
-      .iter()
-      .enumerate()
-      .filter_map(|(i, x)| Some((i, x.payload()?)))
-      .enumerate();
-    let construct_ports = ports.clone().map(|(delta, (idx, _))| {
-    let delta = delta as i32;
-    let idx = syn::Index::from(idx);
-    let mode = if delta == 0 {
-      quote!(Principal)
-    } else {
-      quote!(Auxiliary)
-    };
+    quote!(#vis struct #name<'a, M: #crate_path::Marker>(#(#parts,)*);)
+  }
+
+  fn compile_get_kind_impl(&self, i: usize, s: &Struct) -> TokenStream {
+    let crate_path = self.crate_path();
+    let name = &s.name;
+    let i = i as u32;
     quote!(
-      *self.#idx = #crate_path::LinkHalf::Port(addr + #crate_path::Delta::of(#delta), #crate_path::PortMode::#mode);
-    )
-  });
-    let construct_payloads = payloads.clone().map(|(payload_i, (idx, PayloadType { ty, ..}))| {
-    let prev_payload_len_sum = &payload_len_sum[0..payload_i];
-    let idx = syn::Index::from(idx);
-    quote!(
-      #crate_path::BufferMut::write_payload::<#ty>(net, addr + #crate_path::Length::of(#arity) #(#prev_payload_len_sum)*, self.#idx);
-    )
-  });
-    let destruct_ports = ports.map(|(delta, (idx, _))| {
-      let delta = delta as i32;
-      let var = &destruct_vars[idx];
-      if delta == 0 {
-        quote!(
-          #var = ();
-        )
-      } else {
-        quote!(
-          #var = #crate_path::LinkHalf::From(addr + #crate_path::Delta::of(#delta));
-        )
-      }
-    });
-    let destruct_payloads = payloads.map(|(payload_i, (idx, PayloadType { ty, ..}))| {
-    let prev_payload_len_sum = &payload_len_sum[0..payload_i];
-    let var = &destruct_vars[idx];
-    quote!(
-      #var = #crate_path::Buffer::read_payload::<#ty>(net, addr + #crate_path::Length::of(#arity) #(#prev_payload_len_sum)*);
-    )
-  });
-    quote!(
-      #vis struct #name<'a, M: #crate_path::Marker>(#(#parts,)*);
       impl<'a, I: self::Use> #crate_path::GetKind<I> for #name<'a, #crate_path::GetKindMarker> {
         const KIND: #crate_path::Kind = #crate_path::Kind::of(<I as self::Use>::KIND_START + #i);
       }
+    )
+  }
+
+  fn compile_nilary_construct_destruct_impls(&self, s: &Struct) -> TokenStream {
+    let crate_path = self.crate_path();
+    let name = &s.name;
+    quote!(
+      impl<'a, I: self::Use> #crate_path::Construct<I> for #name<'a, #crate_path::ConstructMarker> {
+        #[inline(always)]
+        fn construct<N: #crate_path::Net>(self, net: &mut N, _: &I) {
+          let kind = <#name<'a, _> as #crate_path::GetKind<I>>::KIND;
+          *self.0 = #crate_path::LinkHalf::Kind(kind);
+        }
+      }
+      impl<'a> #crate_path::Destruct for #name<'a, #crate_path::DestructMarker> {
+        #[inline(always)]
+        fn destruct<N: #crate_path::Net>(net: &mut N, addr: #crate_path::Addr) -> Self {
+          #name(())
+        }
+        #[inline(always)]
+        fn free<N: #crate_path::Net>(_: &mut N, _: #crate_path::Addr) {}
+      }
+    )
+  }
+
+  fn compile_construct_destruct_impls(&self, s: &Struct, arity: u32) -> TokenStream {
+    let crate_path = self.crate_path();
+    let arity_len = quote!(#crate_path::Length::of(#arity));
+    let payload_lens = s
+      .parts
+      .iter()
+      .filter_map(StructPart::payload)
+      .map(|PayloadType { ty, .. }| quote!(#crate_path::Length::of_payload::<#ty>()))
+      .collect::<Vec<_>>();
+    let len = quote!(#arity_len #(.add(#payload_lens))*);
+    let construct_impl = self.compile_construct_impl(s, &len, &arity_len, &payload_lens);
+    let destruct_impl = self.compile_destruct_impl(s, &len, &arity_len, &payload_lens);
+    quote!(
+      #construct_impl
+      #destruct_impl
+    )
+  }
+
+  fn compile_construct_impl(
+    &self,
+    s: &Struct,
+    len: &TokenStream,
+    arity_len: &TokenStream,
+    payload_lens: &Vec<TokenStream>,
+  ) -> TokenStream {
+    let crate_path = self.crate_path();
+    let name = &s.name;
+    let construct_ports = s.ports().map(|(delta, (idx, _))| {
+      let delta = delta as i32;
+      let idx = syn::Index::from(idx);
+      let mode = if delta == 0 {
+        quote!(Principal)
+      } else {
+        quote!(Auxiliary)
+      };
+      quote!(
+        *self.#idx = #crate_path::LinkHalf::Port(
+          addr + #crate_path::Delta::of(#delta),
+          #crate_path::PortMode::#mode,
+        );
+      )
+    });
+    let construct_payloads = s
+      .payloads()
+      .map(|(payload_i, (idx, PayloadType { ty, .. }))| {
+        let prev_payload_lens = &payload_lens[0..payload_i];
+        let idx = syn::Index::from(idx);
+        quote!(
+          #crate_path::BufferMut::write_payload::<#ty>(
+            net,
+            addr + #arity_len #(.add(#prev_payload_lens))*,
+            self.#idx,
+          );
+        )
+      });
+    quote!(
       impl<'a, I: self::Use> #crate_path::Construct<I> for #name<'a, #crate_path::ConstructMarker> {
         #[inline(always)]
         fn construct<N: #crate_path::Net>(self, net: &mut N, _: &I) {
@@ -138,6 +155,43 @@ impl Program {
           #(#construct_payloads)*
         }
       }
+    )
+  }
+
+  fn compile_destruct_impl(
+    &self,
+    s: &Struct,
+    len: &TokenStream,
+    arity_len: &TokenStream,
+    payload_lens: &Vec<TokenStream>,
+  ) -> TokenStream {
+    let crate_path = self.crate_path();
+    let name = &s.name;
+    let destruct_vars = (0..s.parts.len())
+      .map(|i| format_ident!("_{}", i))
+      .collect::<Vec<_>>();
+    let destruct_ports = s.ports().map(|(delta, (idx, _))| {
+      let delta = delta as i32;
+      let var = &destruct_vars[idx];
+      if delta == 0 {
+        quote!(#var = ();)
+      } else {
+        quote!(#var = #crate_path::LinkHalf::From(addr + #crate_path::Delta::of(#delta));)
+      }
+    });
+    let destruct_payloads = s
+      .payloads()
+      .map(|(payload_i, (idx, PayloadType { ty, .. }))| {
+        let prev_payload_lens = &payload_lens[0..payload_i];
+        let var = &destruct_vars[idx];
+        quote!(
+          #var = #crate_path::Buffer::read_payload::<#ty>(
+            net,
+            addr + #arity_len #(.add(#prev_payload_lens))*,
+          );
+        )
+      });
+    quote!(
       impl<'a> #crate_path::Destruct for #name<'a, #crate_path::DestructMarker> {
         #[inline(always)]
         fn destruct<N: #crate_path::Net>(net: &mut N, addr: #crate_path::Addr) -> Self {

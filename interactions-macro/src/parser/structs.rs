@@ -8,6 +8,25 @@ pub struct Struct {
   pub parts: Vec<StructPart>,
 }
 
+impl Struct {
+  pub fn ports(&self) -> impl Iterator<Item = (usize, (usize, &PortType))> {
+    self
+      .parts
+      .iter()
+      .enumerate()
+      .filter_map(|(i, x)| Some((i, x.port()?)))
+      .enumerate()
+  }
+  pub fn payloads(&self) -> impl Iterator<Item = (usize, (usize, &PayloadType))> {
+    self
+      .parts
+      .iter()
+      .enumerate()
+      .filter_map(|(i, x)| Some((i, x.payload()?)))
+      .enumerate()
+  }
+}
+
 impl Parse for Struct {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
     let vis: Visibility = input.parse()?;
