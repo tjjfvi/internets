@@ -1,5 +1,5 @@
 use crate::*;
-use syn::{parenthesized, parse::Parse, Expr, Ident, Pat, Token};
+use syn::{parse::Parse, Expr, Ident, Pat, Token};
 
 #[derive(Debug)]
 pub struct Impl {
@@ -39,17 +39,17 @@ impl Impl {
   pub fn all_idents<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
     self
       .left
-      .parts
-      .iter()
-      .chain(self.right.parts.iter())
-      .filter_map(ImplAgentPart::auxiliary)
+      .fields
+      .values()
+      .chain(self.right.fields.values())
+      .filter_map(ImplAgentField::auxiliary)
       .chain(
         self
           .net
           .agents
           .iter()
-          .flat_map(|x| x.parts.iter())
-          .filter_map(NetAgentPart::port),
+          .flat_map(|x| x.fields.values())
+          .filter_map(NetAgentField::port),
       )
   }
 }
@@ -58,7 +58,7 @@ impl Impl {
 pub struct ImplAgent {
   pub src: Option<Ident>,
   pub name: Ident,
-  pub parts: Vec<ImplAgentPart>,
+  pub fields: Fields<ImplAgentField>,
 }
 
 impl Parse for ImplAgent {
@@ -70,45 +70,46 @@ impl Parse for ImplAgent {
       src = Some(name);
       name = input.parse()?;
     }
-    let parts;
-    parenthesized!(parts in input);
-    let parts = parts.parse_terminated(ImplAgentPart::parse, Token![,])?;
-    Ok(ImplAgent {
-      src,
-      name,
-      parts: parts.into_iter().collect(),
-    })
+    let fields: Fields<ImplAgentField> = input.parse()?;
+    Ok(ImplAgent { src, name, fields })
   }
 }
 
 #[derive(Debug)]
-pub enum ImplAgentPart {
+pub enum ImplAgentField {
   Principal(Token![_]),
   Auxiliary(Ident),
   Payload(PayloadPat),
 }
 
-impl ImplAgentPart {
+impl ImplAgentField {
   pub fn auxiliary(&self) -> Option<&Ident> {
     match self {
-      ImplAgentPart::Auxiliary(x) => Some(x),
+      ImplAgentField::Auxiliary(x) => Some(x),
       _ => None,
     }
   }
 }
 
-impl Parse for ImplAgentPart {
+impl Parse for ImplAgentField {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
     let lookahead = input.lookahead1();
     if lookahead.peek(Token![_]) {
-      input.parse().map(ImplAgentPart::Principal)
+      input.parse().map(ImplAgentField::Principal)
     } else if lookahead.peek(Ident) {
-      input.parse().map(ImplAgentPart::Auxiliary)
+      input.parse().map(ImplAgentField::Auxiliary)
     } else if lookahead.peek(Token![$]) {
-      input.parse().map(ImplAgentPart::Payload)
+      input.parse().map(ImplAgentField::Payload)
     } else {
       Err(lookahead.error())
     }
+  }
+}
+
+impl TryFrom<Ident> for ImplAgentField {
+  type Error = ();
+  fn try_from(value: Ident) -> Result<Self, Self::Error> {
+    Ok(ImplAgentField::Auxiliary(value))
   }
 }
 

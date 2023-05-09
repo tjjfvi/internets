@@ -13,14 +13,14 @@ impl Program {
   fn compile_fn(&self, f: &Fn, includes: &TokenStream) -> TokenStream {
     let crate_path = self.crate_path();
     let parts = f.parts.iter().map(|FnPart { ty: p, .. }| match p {
-      StructPart::Port(_) => quote!(pub &'a mut #crate_path::LinkHalf),
-      StructPart::Payload(PayloadType { ty, .. }) => quote!(pub #ty),
+      StructField::Port(_) => quote!(pub &'a mut #crate_path::LinkHalf),
+      StructField::Payload(PayloadType { ty, .. }) => quote!(pub #ty),
     });
     let binds = f.parts.iter().map(|FnPart { name, ty: p }| {
       let (_, e1) = self.edge_idents(name);
       match p {
-        StructPart::Port(_) => quote!(#e1),
-        StructPart::Payload(_) => quote!(#name),
+        StructField::Port(_) => quote!(#e1),
+        StructField::Payload(_) => quote!(#name),
       }
     });
     let sets = f

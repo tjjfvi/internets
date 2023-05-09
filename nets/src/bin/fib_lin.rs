@@ -11,21 +11,21 @@ interactions! {
     U64(o, $0)
   }
   impl Fib(_, o) for U64(_, $n) {
-    FibX(n, x, y, o)
+    FibX { n, x, y, o }
     U64(n, $n-1)
     U64(x, $0)
     U64(y, $1)
   }
 
-  struct FibX(-U64, -U64, -U64, +U64);
+  struct FibX { n: -U64, x: -U64, y: -U64, o: +U64 }
 
-  impl FibX(_, x, y, y) for U64(_, $0) {
+  impl FibX { n: _, x, y: o, o } for U64(_, $0) {
     Erase(x)
   }
-  impl FibX(_, x, y, o) for U64(_, $n) {
+  impl FibX { n: _, x, y, o } for U64(_, $n) {
     Clone(y, y0, y1)
     Add(x, y0, z)
-    FibX(n1, y1, z, o)
+    FibX { n: n1, x: y1, y: z, o }
     U64(n1, $n-1)
   }
 

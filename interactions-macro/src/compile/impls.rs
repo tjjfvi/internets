@@ -50,36 +50,36 @@ impl Program {
     let cond = i.cond.as_ref().map(|x| quote!(if #x)).unwrap_or(quote!());
 
     let mut seen = BTreeSet::new();
-    let a_pat = self.impl_agent_pat(a, &mut seen);
-    let b_pat = self.impl_agent_pat(b, &mut seen);
+    let a_fields = self.impl_agent_fields(a, &mut seen);
+    let b_fields = self.impl_agent_fields(b, &mut seen);
     let agents = self.compile_net(&i.net, &mut seen, quote!(Self), quote!(self));
     let links = self.link_edge_idents(i.all_idents());
 
+    let a_pat = quote_spanned!(a.name.span()=> #a_src #a_name #a_fields);
+    let b_pat = quote_spanned!(b.name.span()=> #b_src #b_name #b_fields);
+
     quote_spanned!(i.imp.span=>
-      (#a_src #a_name(#(#a_pat),*), #b_src #b_name(#(#b_pat),*)) #cond => {
+      (#a_pat, #b_pat) #cond => {
         #agents
         #links
       }
     )
   }
 
-  fn impl_agent_pat<'a>(
-    &self,
-    a: &'a ImplAgent,
-    seen: &mut BTreeSet<&'a Ident>,
-  ) -> Vec<TokenStream> {
-    a.parts
-      .iter()
-      .map(|x| match x {
-        ImplAgentPart::Principal(_) => quote!(()),
-        ImplAgentPart::Auxiliary(ident) => {
+  fn impl_agent_fields<'a>(&self, a: &'a ImplAgent, seen: &mut BTreeSet<&'a Ident>) -> TokenStream {
+    self.compile_fields(
+      &a.fields,
+      quote!(),
+      a.fields.values().map(|x| match x {
+        ImplAgentField::Principal(_) => quote!(()),
+        ImplAgentField::Auxiliary(ident) => {
           let (e0, e1) = self.edge_idents(ident);
           let e = if seen.insert(ident) { e0 } else { e1 };
           quote!(#e)
         }
-        ImplAgentPart::Payload(PayloadPat { pat, .. }) => quote!(#pat),
-      })
-      .collect::<Vec<_>>()
+        ImplAgentField::Payload(PayloadPat { pat, .. }) => quote!(#pat),
+      }),
+    )
   }
 }
 

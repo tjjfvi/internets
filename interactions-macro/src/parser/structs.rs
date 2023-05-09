@@ -1,26 +1,26 @@
 use crate::*;
-use syn::{parenthesized, parse::Parse, Ident, Token, Visibility};
+use syn::{parse::Parse, Ident, Token, Visibility};
 
 #[derive(Debug)]
 pub struct Struct {
   pub vis: Visibility,
   pub name: Ident,
-  pub parts: Vec<StructPart>,
+  pub fields: Fields<StructField>,
 }
 
 impl Struct {
   pub fn ports(&self) -> impl Iterator<Item = (usize, (usize, &PortType))> {
     self
-      .parts
-      .iter()
+      .fields
+      .values()
       .enumerate()
       .filter_map(|(i, x)| Some((i, x.port()?)))
       .enumerate()
   }
   pub fn payloads(&self) -> impl Iterator<Item = (usize, (usize, &PayloadType))> {
     self
-      .parts
-      .iter()
+      .fields
+      .values()
       .enumerate()
       .filter_map(|(i, x)| Some((i, x.payload()?)))
       .enumerate()
@@ -32,48 +32,51 @@ impl Parse for Struct {
     let vis: Visibility = input.parse()?;
     let _: Token![struct] = input.parse()?;
     let name: Ident = input.parse()?;
-    let parts;
-    parenthesized!(parts in input);
-    let parts = parts.parse_terminated(StructPart::parse, Token![,])?;
-    let _: Token![;] = input.parse()?;
-    Ok(Struct {
-      vis,
-      name,
-      parts: parts.into_iter().collect(),
-    })
+    let fields: Fields<_> = input.parse()?;
+    if fields.semi() {
+      let _: Token![;] = input.parse()?;
+    }
+    Ok(Struct { vis, name, fields })
   }
 }
 
 #[derive(Debug)]
-pub enum StructPart {
+pub enum StructField {
   Port(PortType),
   Payload(PayloadType),
 }
 
-impl StructPart {
+impl StructField {
   pub fn port(&self) -> Option<&PortType> {
     match self {
-      StructPart::Port(x) => Some(x),
+      StructField::Port(x) => Some(x),
       _ => None,
     }
   }
   pub fn payload(&self) -> Option<&PayloadType> {
     match self {
-      StructPart::Payload(x) => Some(x),
+      StructField::Payload(x) => Some(x),
       _ => None,
     }
   }
 }
 
-impl Parse for StructPart {
+impl Parse for StructField {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
     let lookahead = input.lookahead1();
     if lookahead.peek(Token![$]) {
-      input.parse().map(StructPart::Payload)
+      input.parse().map(StructField::Payload)
     } else if input.peek(Token![+]) || input.peek(Token![-]) {
-      input.parse().map(StructPart::Port)
+      input.parse().map(StructField::Port)
     } else {
       Err(lookahead.error())
     }
+  }
+}
+
+impl TryFrom<Ident> for StructField {
+  type Error = ();
+  fn try_from(_: Ident) -> Result<Self, Self::Error> {
+    Err(())
   }
 }

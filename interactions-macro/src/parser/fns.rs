@@ -31,14 +31,14 @@ impl Parse for Fn {
 #[derive(Debug)]
 pub struct FnPart {
   pub name: Ident,
-  pub ty: StructPart,
+  pub ty: StructField,
 }
 
 impl Parse for FnPart {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
     let name: Ident = input.parse()?;
     let _: Token![:] = input.parse()?;
-    let ty: StructPart = input.parse()?;
+    let ty: StructField = input.parse()?;
     Ok(FnPart { name, ty })
   }
 }
@@ -59,7 +59,7 @@ impl Fn {
       .net
       .agents
       .iter()
-      .flat_map(|x| x.parts.iter())
-      .filter_map(NetAgentPart::port)
+      .flat_map(|x| x.fields.values())
+      .filter_map(NetAgentField::port)
   }
 }

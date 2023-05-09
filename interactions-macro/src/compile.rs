@@ -1,9 +1,11 @@
+mod fields;
 mod fns;
 mod impls;
 mod net;
 mod structs;
 mod uses;
 
+pub use fields::*;
 pub use fns::*;
 pub use impls::*;
 pub use net::*;

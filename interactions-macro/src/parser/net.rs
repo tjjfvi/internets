@@ -1,5 +1,5 @@
 use crate::*;
-use syn::{braced, parenthesized, parse::Parse, Expr, Token};
+use syn::{braced, parse::Parse, Expr, Token};
 
 #[derive(Debug)]
 pub struct Net {
@@ -22,7 +22,7 @@ impl Parse for Net {
 pub struct NetAgent {
   pub src: Option<Ident>,
   pub name: Ident,
-  pub parts: Vec<NetAgentPart>,
+  pub fields: Fields<NetAgentField>,
 }
 
 impl Parse for NetAgent {
@@ -34,42 +34,43 @@ impl Parse for NetAgent {
       src = Some(name);
       name = input.parse()?;
     }
-    let parts;
-    parenthesized!(parts in input);
-    let parts = parts.parse_terminated(NetAgentPart::parse, Token![,])?;
-    Ok(NetAgent {
-      src,
-      name,
-      parts: parts.into_iter().collect(),
-    })
+    let fields = input.parse()?;
+    Ok(NetAgent { src, name, fields })
   }
 }
 
 #[derive(Debug)]
-pub enum NetAgentPart {
+pub enum NetAgentField {
   Port(Ident),
   Payload(PayloadExpr),
 }
 
-impl NetAgentPart {
+impl NetAgentField {
   pub fn port(&self) -> Option<&Ident> {
     match self {
-      NetAgentPart::Port(x) => Some(x),
+      NetAgentField::Port(x) => Some(x),
       _ => None,
     }
   }
 }
 
-impl Parse for NetAgentPart {
+impl Parse for NetAgentField {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
     let lookahead = input.lookahead1();
     if lookahead.peek(Token![$]) {
-      input.parse().map(NetAgentPart::Payload)
+      input.parse().map(NetAgentField::Payload)
     } else if lookahead.peek(Ident) {
-      input.parse().map(NetAgentPart::Port)
+      input.parse().map(NetAgentField::Port)
     } else {
       Err(lookahead.error())
     }
+  }
+}
+
+impl TryFrom<Ident> for NetAgentField {
+  type Error = ();
+  fn try_from(value: Ident) -> Result<Self, Self::Error> {
+    Ok(NetAgentField::Port(value))
   }
 }
 

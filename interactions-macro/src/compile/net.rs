@@ -26,27 +26,25 @@ impl Program {
     let src = self.quote_src(&agent.src);
     let name = &agent.name;
     let mut vars = vec![];
-    let parts = agent
-      .parts
-      .iter()
-      .map(|x| match x {
-        NetAgentPart::Port(x) => {
+    let fields = self.compile_fields(
+      &agent.fields,
+      quote!(),
+      agent.fields.values().map(|x| match x {
+        NetAgentField::Port(x) => {
           let (e0, e1) = self.edge_idents(x);
           let e = if seen.insert(x) { e0 } else { e1 };
           vars.push(e.clone());
           quote!(&mut #e)
         }
-        NetAgentPart::Payload(PayloadExpr { expr, .. }) => {
+        NetAgentField::Payload(PayloadExpr { expr, .. }) => {
           quote!(#expr)
         }
-      })
-      .collect::<Vec<_>>();
+      }),
+    );
     quote!(
       #(let mut #vars = #crate_path::LinkHalf::Null;)*
       #crate_path::Construct::<#interactions_ty>::construct(
-        #src #name (
-          #(#parts),*
-        ),
+        #src #name #fields,
         net,
         #interactions_var,
       );
