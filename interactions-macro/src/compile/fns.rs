@@ -36,10 +36,9 @@ impl Program {
       .iter()
       .find(|x| x.ty.port().is_some())
       .map(|_| quote!('a,));
-    let mut seen = BTreeSet::new();
-    let agents = self.compile_net(&f.net, &mut seen, quote!(I), quote!(interactions));
-    let inputs = f.input_idents().collect::<Vec<_>>();
-    let links = self.link_edge_idents(f.inner_idents().filter(|x| !inputs.contains(x)));
+    let mut net = self.new_net_compilation(quote!(I), quote!(interactions));
+    self.compile_net(&f.net, &mut net);
+    let net = self.finish_net_compilation(net);
     let name = &f.name;
     let vis = &f.vis;
     quote!(
@@ -50,8 +49,7 @@ impl Program {
         fn construct<N: #crate_path::Net>(self, net: &mut N, interactions: &I) {
           #includes
           let #name(#(#binds),*) = self;
-          #agents
-          #links
+          #net
           #(#sets)*
         }
       }

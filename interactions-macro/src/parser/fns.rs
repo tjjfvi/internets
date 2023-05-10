@@ -45,7 +45,7 @@ impl Parse for FnPart {
 
 impl Fn {
   pub fn all_idents<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
-    self.input_idents().chain(self.inner_idents())
+    self.input_idents().chain(self.net.all_idents())
   }
   pub fn input_idents<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
     self
@@ -53,13 +53,5 @@ impl Fn {
       .iter()
       .filter(|x| x.ty.port().is_some())
       .map(|x| &x.name)
-  }
-  pub fn inner_idents<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
-    self
-      .net
-      .agents
-      .iter()
-      .flat_map(|x| x.fields.values())
-      .filter_map(NetAgentField::port)
   }
 }

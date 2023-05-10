@@ -1,9 +1,37 @@
 use crate::*;
-use syn::{braced, parse::Parse, Expr, Token};
+use itertools::Either;
+use syn::{
+  braced,
+  parse::Parse,
+  token::{Brace, Paren},
+  Expr, Token,
+};
 
 #[derive(Debug)]
 pub struct Net {
   pub agents: Vec<NetAgent>,
+}
+
+impl Net {
+  pub fn all_idents(&self) -> impl Iterator<Item = &Ident> {
+    self.agents.iter().flat_map(NetAgent::all_idents)
+  }
+}
+
+impl NetAgent {
+  pub fn all_idents(&self) -> impl Iterator<Item = &Ident> {
+    self
+      .fields
+      .values()
+      .flat_map(|f| match f {
+        NetAgentField::Port(x) => Some(Either::Left([x].into_iter())),
+        NetAgentField::Agent(x) => Some(Either::Right(
+          x.all_idents().collect::<Vec<_>>().into_iter(),
+        )),
+        _ => None,
+      })
+      .flatten()
+  }
 }
 
 impl Parse for Net {
@@ -41,26 +69,28 @@ impl Parse for NetAgent {
 
 #[derive(Debug)]
 pub enum NetAgentField {
+  Implicit(Token!(_)),
   Port(Ident),
   Payload(PayloadExpr),
-}
-
-impl NetAgentField {
-  pub fn port(&self) -> Option<&Ident> {
-    match self {
-      NetAgentField::Port(x) => Some(x),
-      _ => None,
-    }
-  }
+  Agent(NetAgent),
 }
 
 impl Parse for NetAgentField {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
     let lookahead = input.lookahead1();
-    if lookahead.peek(Token![$]) {
+    if lookahead.peek(Token![_]) {
+      input.parse().map(NetAgentField::Implicit)
+    } else if lookahead.peek(Token![$]) {
       input.parse().map(NetAgentField::Payload)
     } else if lookahead.peek(Ident) {
-      input.parse().map(NetAgentField::Port)
+      let fork = input.fork();
+      let _: Ident = fork.parse()?;
+      let lookahead = fork.lookahead1();
+      if lookahead.peek(Paren) || lookahead.peek(Brace) {
+        input.parse().map(NetAgentField::Agent)
+      } else {
+        input.parse().map(NetAgentField::Port)
+      }
     } else {
       Err(lookahead.error())
     }

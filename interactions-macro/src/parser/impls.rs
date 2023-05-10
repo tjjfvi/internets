@@ -1,5 +1,10 @@
 use crate::*;
-use syn::{parse::Parse, Expr, Ident, Pat, Token};
+use itertools::Either;
+use syn::{
+  parse::Parse,
+  token::{Brace, Paren},
+  Expr, Ident, Pat, Token,
+};
 
 #[derive(Debug)]
 pub struct Impl {
@@ -42,15 +47,13 @@ impl Impl {
       .fields
       .values()
       .chain(self.right.fields.values())
-      .filter_map(ImplAgentField::auxiliary)
-      .chain(
-        self
-          .net
-          .agents
-          .iter()
-          .flat_map(|x| x.fields.values())
-          .filter_map(NetAgentField::port),
-      )
+      .flat_map(|f| match f {
+        ImplAgentField::Port(x) => Some(Either::Left([x].into_iter())),
+        ImplAgentField::Agent(a) => Some(Either::Right(a.all_idents())),
+        _ => None,
+      })
+      .flatten()
+      .chain(self.net.all_idents())
   }
 }
 
@@ -77,27 +80,26 @@ impl Parse for ImplAgent {
 
 #[derive(Debug)]
 pub enum ImplAgentField {
-  Principal(Token![_]),
-  Auxiliary(Ident),
+  Implicit(Token![_]),
+  Port(Ident),
   Payload(PayloadPat),
-}
-
-impl ImplAgentField {
-  pub fn auxiliary(&self) -> Option<&Ident> {
-    match self {
-      ImplAgentField::Auxiliary(x) => Some(x),
-      _ => None,
-    }
-  }
+  Agent(NetAgent),
 }
 
 impl Parse for ImplAgentField {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
     let lookahead = input.lookahead1();
     if lookahead.peek(Token![_]) {
-      input.parse().map(ImplAgentField::Principal)
+      input.parse().map(ImplAgentField::Implicit)
     } else if lookahead.peek(Ident) {
-      input.parse().map(ImplAgentField::Auxiliary)
+      let fork = input.fork();
+      let _: Ident = fork.parse()?;
+      let lookahead = fork.lookahead1();
+      if lookahead.peek(Paren) || lookahead.peek(Brace) {
+        input.parse().map(ImplAgentField::Agent)
+      } else {
+        input.parse().map(ImplAgentField::Port)
+      }
     } else if lookahead.peek(Token![$]) {
       input.parse().map(ImplAgentField::Payload)
     } else {
@@ -109,7 +111,7 @@ impl Parse for ImplAgentField {
 impl TryFrom<Ident> for ImplAgentField {
   type Error = ();
   fn try_from(value: Ident) -> Result<Self, Self::Error> {
-    Ok(ImplAgentField::Auxiliary(value))
+    Ok(ImplAgentField::Port(value))
   }
 }
 
