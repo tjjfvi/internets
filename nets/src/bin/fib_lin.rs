@@ -5,19 +5,27 @@ mod stdlib;
 interactions! {
   use stdlib;
 
-  struct Fib(-U64, +U64);
-
-  impl Fib(_, o) for U64(_, $0) {
-    U64(o, $0)
-  }
-  impl Fib(_, o) for U64(_, $n) {
-    FibX { n, x, y, o }
-    U64(n, $n-1)
-    U64(x, $0)
-    U64(y, $1)
+  struct Fib {
+    n: -U64,
+    o: +U64,
   }
 
-  struct FibX { n: -U64, x: -U64, y: -U64, o: +U64 }
+  impl Fib { n: _, o: U64(_, $0) } for U64(_, $0) {}
+  impl Fib { n: _, o } for U64(_, $n) {
+    FibX {
+      n: U64(_, $n-1),
+      x: U64(_, $0),
+      y: U64(_, $1),
+      o,
+    }
+  }
+
+  struct FibX {
+    n: -U64,
+    x: -U64,
+    y: -U64,
+    o: +U64,
+  }
 
   impl FibX {
     n: _,
@@ -41,9 +49,7 @@ interactions! {
   }
 
   fn _main(n: $u64){
-    U64(n, $n)
-    Fib(n, o)
-    Print(o)
+    Print(Fib { n: U64(_, $n), o: _ })
   }
 }
 
