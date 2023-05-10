@@ -63,8 +63,10 @@ impl Program {
             #includes
             match (a_kind, b_kind) {
               #(#rules)*
+              _ if false => {},
               _ => return false,
             }
+            #[allow(unreachable_code)]
             true
           }
         }

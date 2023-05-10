@@ -4,18 +4,20 @@ mod libs;
 
 interactions! {
   use libs::std;
+  use libs::nat;
+  use libs::u64_nat;
 
   struct Fib {
     n: -U64,
     o: +U64,
   }
 
-  impl Fib { n: _, o: U64(_, $0) } for U64(_, $0) {}
-  impl Fib { n: _, o } for U64(_, $n) {
+  impl Fib { n: _, o: Zero(_) } for Zero(_) {}
+  impl Fib { n: _, o } for Succ(_, n) {
     FibX {
-      n: U64(_, $n-1),
-      x: U64(_, $0),
-      y: U64(_, $1),
+      n,
+      x: Zero(_),
+      y: Succ(_, Zero(_)),
       o,
     }
   }
@@ -29,33 +31,33 @@ interactions! {
 
   impl FibX {
     n: _,
-    x: Erase(_),
+    x: nat::Erase(_),
     y: o,
     o,
-  } for U64(_, $0) {}
+  } for Zero(_) {}
 
   impl FibX {
     n: _,
     x,
-    y: Clone(_, y0, y1),
+    y: nat::Clone(_, y0, y1),
     o,
-  } for U64(_, $n) {
+  } for Succ(_, n) {
     FibX {
-      n: U64(_, $n-1),
+      n,
       x: y1,
-      y: Add(x, y0, _),
+      y: nat::Add(x, y0, _),
       o,
     }
   }
 
   fn _main(n: $u64){
-    Print(Fib { n: U64(_, $n), o: _ })
+    Print(NatToU64(Fib { n: U64ToNat(U64(_, $n), _), o: _ }, _))
   }
 }
 
 fn main() {
   let args: Vec<_> = std::env::args().collect();
-  let n = args.get(1).map(|x| x.parse().unwrap()).unwrap_or(1000000);
+  let n = args.get(1).map(|x| x.parse().unwrap()).unwrap_or(32);
   let mut stats = Stats::default();
   let mut net = BasicNet::new(LinkAlloc::new(ArrayBuffer::new(1 << 28)));
   _main(n).construct(&mut net, &Interactions);

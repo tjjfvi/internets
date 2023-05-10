@@ -95,7 +95,7 @@ impl Parse for ImplAgentField {
       let fork = input.fork();
       let _: Ident = fork.parse()?;
       let lookahead = fork.lookahead1();
-      if lookahead.peek(Paren) || lookahead.peek(Brace) {
+      if lookahead.peek(Paren) || lookahead.peek(Brace) || lookahead.peek(Token![::]) {
         input.parse().map(ImplAgentField::Agent)
       } else {
         input.parse().map(ImplAgentField::Port)

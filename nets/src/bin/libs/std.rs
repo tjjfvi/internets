@@ -75,6 +75,3 @@ interactions! {
 
   pub fn side_effect(_effect: $()) {}
 }
-
-#[allow(unused)]
-fn main() {}

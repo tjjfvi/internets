@@ -3,25 +3,23 @@ use internets_nets::*;
 mod libs;
 
 interactions! {
+  use libs::nat;
   use libs::std;
+  use libs::u64_nat;
 
-  struct Fib(-U64, +U64);
+  struct Fib(-Nat, +Nat);
+  struct FibS(-Nat, +Nat);
 
-  impl Fib(_, o) for U64(_, $n @ (0 | 1)) {
-    U64(o, $n)
-  }
-  impl Fib(_, o) for U64(_, $n) {
-    U64(a, $n-1)
-    U64(b, $n-2)
-    Fib(a, x)
-    Fib(b, y)
-    Add(x, y, o)
+  impl Fib(_, r) for Zero(_) { Zero(r) }
+  impl Fib(_, r) for Succ(_, x) { FibS(x, r) }
+
+  impl FibS(_, r) for Zero(_) { Succ(r, Zero(_)) }
+  impl FibS(_, r) for Succ(_, nat::Clone(_, x0, x1)) {
+    nat::Add(Fib(x0, _), FibS(x1, _), r)
   }
 
   fn _main(n: $u64){
-    U64(n, $n)
-    Fib(n, o)
-    Print(o)
+    Print(NatToU64(Fib(U64ToNat(U64(_, $n), _), _), _))
   }
 }
 

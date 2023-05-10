@@ -1,9 +1,9 @@
 use internets_nets::*;
 
-mod stdlib;
+mod libs;
 
 interactions! {
-  use stdlib;
+  use libs::std;
 
   struct Nil(+List);
   struct Cons(+List, -U64, -List);
